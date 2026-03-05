@@ -3,6 +3,35 @@ import axios from 'axios';
 // Use environment variable for API URL, fallback to relative path for dev proxy
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
+// Session ID management for cross-domain auth
+const SESSION_ID_KEY = 'testcase_session_id';
+
+export const getSessionId = (): string | null => {
+  return localStorage.getItem(SESSION_ID_KEY);
+};
+
+export const setSessionId = (sid: string): void => {
+  localStorage.setItem(SESSION_ID_KEY, sid);
+};
+
+export const clearSessionId = (): void => {
+  localStorage.removeItem(SESSION_ID_KEY);
+};
+
+// Check URL for session ID after OAuth redirect
+export const extractSessionIdFromUrl = (): void => {
+  const params = new URLSearchParams(window.location.search);
+  const sid = params.get('sid');
+  if (sid) {
+    setSessionId(sid);
+    // Clean up URL
+    params.delete('sid');
+    const newSearch = params.toString();
+    const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '');
+    window.history.replaceState({}, '', newUrl);
+  }
+};
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
@@ -11,10 +40,24 @@ const api = axios.create({
   },
 });
 
+// Add session ID to all requests
+api.interceptors.request.use((config) => {
+  const sessionId = getSessionId();
+  if (sessionId) {
+    config.headers['X-Session-ID'] = sessionId;
+  }
+  return config;
+});
+
 // Auth API
 export const authApi = {
   getStatus: () => api.get('/auth/status').then(res => res.data),
-  logout: (provider?: string) => api.post('/auth/logout', null, { params: { provider } }),
+  logout: (provider?: string) => {
+    if (!provider) {
+      clearSessionId();
+    }
+    return api.post('/auth/logout', null, { params: { provider } });
+  },
   getGoogleAuthUrl: () => `${API_BASE_URL}/auth/google`,
   getAtlassianAuthUrl: () => `${API_BASE_URL}/auth/atlassian`,
 };

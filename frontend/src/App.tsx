@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { authApi } from './lib/api'
+import { authApi, extractSessionIdFromUrl } from './lib/api'
 import { useWizard } from './contexts/WizardContext'
 import Stepper from './components/Stepper/Stepper'
 import StepCards from './components/StepCards/StepCards'
@@ -16,6 +16,9 @@ const STEPS = [
   { id: 2, title: 'Sheet Config', icon: 'file' },
   { id: 3, title: 'Generate', icon: 'sparkles' },
 ]
+
+// Extract session ID from URL on initial load (before any API calls)
+extractSessionIdFromUrl()
 
 function App() {
   const { state, dispatch } = useWizard()
@@ -50,7 +53,7 @@ function App() {
 
     if (success) {
       toast.success(`Successfully signed in with ${success === 'google' ? 'Google' : 'Atlassian'}!`)
-      // Clear URL first, then refetch with a small delay to ensure session is set
+      // Clear URL, then refetch
       window.history.replaceState({}, '', window.location.pathname)
       setTimeout(async () => {
         const result = await refetchAuth()

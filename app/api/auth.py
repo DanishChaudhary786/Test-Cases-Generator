@@ -4,9 +4,10 @@ OAuth authentication endpoints for Google and Atlassian.
 
 import secrets
 from urllib.parse import urlencode
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Header
 from fastapi.responses import RedirectResponse
 import httpx
+from typing import Optional
 
 from app.core import settings, GOOGLE_SCOPES, ATLASSIAN_SCOPES
 from app.core.endpoints import (
@@ -19,11 +20,21 @@ from app.core.endpoints import (
     AuthRoutes,
     get_jira_user_url,
 )
-from app.core.token_store import store_tokens, get_tokens, clear_tokens, create_session_id
+from app.core.token_store import (
+    store_tokens, get_tokens, clear_tokens, create_session_id,
+    store_oauth_state, get_session_for_state
+)
 
 router = APIRouter()
 
-SESSION_ID_KEY = "sid"
+SESSION_ID_HEADER = "X-Session-ID"
+
+
+def get_session_id(request: Request, x_session_id: Optional[str] = Header(None)) -> Optional[str]:
+    """Get session ID from header or session cookie."""
+    if x_session_id:
+        return x_session_id
+    return request.session.get("sid")
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -31,13 +42,19 @@ SESSION_ID_KEY = "sid"
 # ─────────────────────────────────────────────────────────────────────
 
 @router.get(AuthRoutes.GOOGLE)
-async def google_auth(request: Request):
+async def google_auth(request: Request, x_session_id: Optional[str] = Header(None)):
     """Initiate Google OAuth flow."""
     if not settings.GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Google OAuth not configured")
     
+    # Get or create session ID
+    session_id = get_session_id(request, x_session_id)
+    if not session_id:
+        session_id = create_session_id()
+    
+    # Generate state and store it server-side with session ID
     state = secrets.token_urlsafe(32)
-    request.session["google_oauth_state"] = state
+    store_oauth_state(state, session_id)
     
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
@@ -61,8 +78,14 @@ async def google_callback(request: Request, code: str = None, state: str = None,
             url=f"{settings.FRONTEND_URL}?error={error}&provider=google"
         )
     
-    stored_state = request.session.get("google_oauth_state")
-    if not state or state != stored_state:
+    # Verify state and get session ID from server-side store
+    if not state:
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}?error=no_state&provider=google"
+        )
+    
+    session_id = get_session_for_state(state)
+    if not session_id:
         return RedirectResponse(
             url=f"{settings.FRONTEND_URL}?error=invalid_state&provider=google"
         )
@@ -107,13 +130,7 @@ async def google_callback(request: Request, code: str = None, state: str = None,
         
         userinfo = userinfo_response.json()
     
-    # Get or create session ID for server-side token storage
-    session_id = request.session.get(SESSION_ID_KEY)
-    if not session_id:
-        session_id = create_session_id()
-        request.session[SESSION_ID_KEY] = session_id
-    
-    # Store tokens in server-side token store (not in cookie)
+    # Store tokens in server-side token store
     store_tokens(session_id, "google", {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -121,13 +138,13 @@ async def google_callback(request: Request, code: str = None, state: str = None,
         "name": userinfo.get("name"),
     })
     
-    # Clear OAuth state
-    request.session.pop("google_oauth_state", None)
-    
     print(f"[DEBUG] Google callback - session_id: {session_id}")
     
-    # Use status_code=303 to ensure cookies are properly set before redirect
-    return RedirectResponse(url=f"{settings.FRONTEND_URL}?success=google", status_code=303)
+    # Redirect with session_id in URL so frontend can store it
+    return RedirectResponse(
+        url=f"{settings.FRONTEND_URL}?success=google&sid={session_id}",
+        status_code=303
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -135,13 +152,19 @@ async def google_callback(request: Request, code: str = None, state: str = None,
 # ─────────────────────────────────────────────────────────────────────
 
 @router.get(AuthRoutes.ATLASSIAN)
-async def atlassian_auth(request: Request):
+async def atlassian_auth(request: Request, x_session_id: Optional[str] = Header(None)):
     """Initiate Atlassian OAuth flow."""
     if not settings.ATLASSIAN_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Atlassian OAuth not configured")
     
+    # Get or create session ID
+    session_id = get_session_id(request, x_session_id)
+    if not session_id:
+        session_id = create_session_id()
+    
+    # Generate state and store it server-side with session ID
     state = secrets.token_urlsafe(32)
-    request.session["atlassian_oauth_state"] = state
+    store_oauth_state(state, session_id)
     
     params = {
         "audience": "api.atlassian.com",
@@ -165,8 +188,14 @@ async def atlassian_callback(request: Request, code: str = None, state: str = No
             url=f"{settings.FRONTEND_URL}?error={error}&provider=atlassian"
         )
     
-    stored_state = request.session.get("atlassian_oauth_state")
-    if not state or state != stored_state:
+    # Verify state and get session ID from server-side store
+    if not state:
+        return RedirectResponse(
+            url=f"{settings.FRONTEND_URL}?error=no_state&provider=atlassian"
+        )
+    
+    session_id = get_session_for_state(state)
+    if not session_id:
         return RedirectResponse(
             url=f"{settings.FRONTEND_URL}?error=invalid_state&provider=atlassian"
         )
@@ -235,13 +264,7 @@ async def atlassian_callback(request: Request, code: str = None, state: str = No
             email = me_data.get("emailAddress")
             display_name = me_data.get("displayName")
     
-    # Get or create session ID for server-side token storage
-    session_id = request.session.get(SESSION_ID_KEY)
-    if not session_id:
-        session_id = create_session_id()
-        request.session[SESSION_ID_KEY] = session_id
-    
-    # Store tokens in server-side token store (not in cookie - avoids size limits)
+    # Store tokens in server-side token store
     store_tokens(session_id, "atlassian", {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -258,11 +281,11 @@ async def atlassian_callback(request: Request, code: str = None, state: str = No
     print(f"  - site_name: {site_name}")
     print(f"  - email: {email}")
     
-    # Clear OAuth state
-    request.session.pop("atlassian_oauth_state", None)
-    
-    # Use status_code=303 to ensure cookies are properly set before redirect
-    return RedirectResponse(url=f"{settings.FRONTEND_URL}?success=atlassian", status_code=303)
+    # Redirect with session_id in URL so frontend can store it
+    return RedirectResponse(
+        url=f"{settings.FRONTEND_URL}?success=atlassian&sid={session_id}",
+        status_code=303
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -270,12 +293,12 @@ async def atlassian_callback(request: Request, code: str = None, state: str = No
 # ─────────────────────────────────────────────────────────────────────
 
 @router.get(AuthRoutes.STATUS)
-async def auth_status(request: Request):
+async def auth_status(request: Request, x_session_id: Optional[str] = Header(None)):
     """Check authentication status for both providers."""
-    session_id = request.session.get(SESSION_ID_KEY)
+    session_id = get_session_id(request, x_session_id)
     
     # Debug: print session info
-    print(f"[DEBUG] Session ID: {session_id}")
+    print(f"[DEBUG] Auth status - Session ID: {session_id}")
     
     google_tokens = get_tokens(session_id, "google") if session_id else None
     atlassian_tokens = get_tokens(session_id, "atlassian") if session_id else None
@@ -300,9 +323,9 @@ async def auth_status(request: Request):
 
 
 @router.post(AuthRoutes.LOGOUT)
-async def logout(request: Request, provider: str = None):
+async def logout(request: Request, provider: str = None, x_session_id: Optional[str] = Header(None)):
     """Clear authentication tokens."""
-    session_id = request.session.get(SESSION_ID_KEY)
+    session_id = get_session_id(request, x_session_id)
     
     if session_id:
         if provider == "google":
@@ -317,9 +340,9 @@ async def logout(request: Request, provider: str = None):
 
 
 @router.get(AuthRoutes.GOOGLE_TOKEN)
-async def get_google_token(request: Request):
+async def get_google_token(request: Request, x_session_id: Optional[str] = Header(None)):
     """Get current Google access token (for debugging/internal use)."""
-    session_id = request.session.get(SESSION_ID_KEY)
+    session_id = get_session_id(request, x_session_id)
     google_tokens = get_tokens(session_id, "google") if session_id else None
     
     if not google_tokens or not google_tokens.get("access_token"):
@@ -328,9 +351,9 @@ async def get_google_token(request: Request):
 
 
 @router.get(AuthRoutes.ATLASSIAN_TOKEN)
-async def get_atlassian_token(request: Request):
+async def get_atlassian_token(request: Request, x_session_id: Optional[str] = Header(None)):
     """Get current Atlassian access token and cloud ID."""
-    session_id = request.session.get(SESSION_ID_KEY)
+    session_id = get_session_id(request, x_session_id)
     atlassian_tokens = get_tokens(session_id, "atlassian") if session_id else None
     
     if not atlassian_tokens or not atlassian_tokens.get("access_token"):

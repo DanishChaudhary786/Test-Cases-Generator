@@ -9,6 +9,9 @@ import secrets
 # In-memory store (in production, use Redis or similar)
 _token_store: Dict[str, Dict] = {}
 
+# OAuth state store (maps state -> session_id)
+_oauth_state_store: Dict[str, str] = {}
+
 
 def create_session_id() -> str:
     """Generate a unique session ID."""
@@ -41,3 +44,13 @@ def clear_tokens(session_id: str, provider: Optional[str] = None) -> None:
 def get_all_sessions() -> Dict:
     """Get all sessions (for debugging)."""
     return _token_store
+
+
+def store_oauth_state(state: str, session_id: str) -> None:
+    """Store OAuth state mapped to session ID."""
+    _oauth_state_store[state] = session_id
+
+
+def get_session_for_state(state: str) -> Optional[str]:
+    """Get session ID for OAuth state and remove it."""
+    return _oauth_state_store.pop(state, None)
