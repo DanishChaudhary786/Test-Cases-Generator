@@ -1,7 +1,10 @@
 import axios from 'axios';
 
+// Use environment variable for API URL, fallback to relative path for dev proxy
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
@@ -12,8 +15,8 @@ const api = axios.create({
 export const authApi = {
   getStatus: () => api.get('/auth/status').then(res => res.data),
   logout: (provider?: string) => api.post('/auth/logout', null, { params: { provider } }),
-  getGoogleAuthUrl: () => '/api/auth/google',
-  getAtlassianAuthUrl: () => '/api/auth/atlassian',
+  getGoogleAuthUrl: () => `${API_BASE_URL}/auth/google`,
+  getAtlassianAuthUrl: () => `${API_BASE_URL}/auth/atlassian`,
 };
 
 // Jira API
@@ -63,7 +66,7 @@ export const generateApi = {
     api.post('/generate', data).then(res => res.data),
   getStatus: (jobId: string) => 
     api.get(`/generate/status/${jobId}`).then(res => res.data),
-  streamUrl: (jobId: string) => `/api/generate/stream/${jobId}`,
+  streamUrl: (jobId: string) => `${API_BASE_URL}/generate/stream/${jobId}`,
   cancel: (jobId: string) => 
     api.delete(`/generate/${jobId}`).then(res => res.data),
 };
