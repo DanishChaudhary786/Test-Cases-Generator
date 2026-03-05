@@ -9,6 +9,7 @@ import GoogleAuthStep from './components/Steps/GoogleAuthStep'
 import JiraSetupStep from './components/Steps/JiraSetupStep'
 import SheetConfigStep from './components/Steps/SheetConfigStep'
 import GenerateStep from './components/Steps/GenerateStep'
+import PrivacyPolicy from './pages/PrivacyPolicy'
 
 const STEPS = [
   { id: 0, title: 'Sign In', icon: 'user' },
@@ -19,6 +20,9 @@ const STEPS = [
 
 // Extract session ID from URL on initial load (before any API calls)
 extractSessionIdFromUrl()
+
+// Simple router - check if on privacy policy page
+const isPrivacyPolicyPage = window.location.pathname === '/privacy-policy'
 
 function App() {
   const { state, dispatch } = useWizard()
@@ -85,6 +89,11 @@ function App() {
     }
   }
 
+  // Render privacy policy page if on that route
+  if (isPrivacyPolicyPage) {
+    return <PrivacyPolicy />
+  }
+
   return (
     <div className="min-h-screen bg-neutral-light-grey">
       <div className="max-w-6xl mx-auto px-4 py-8">
@@ -105,6 +114,15 @@ function App() {
           <div className="mt-8 border-t border-neutral-lightest-grey pt-8">
             {renderCurrentStep()}
           </div>
+
+          <footer className="mt-8 pt-4 border-t border-neutral-lightest-grey text-center">
+            <a 
+              href="/privacy-policy" 
+              className="text-text-tertiary hover:text-text-secondary text-sm"
+            >
+              Privacy Policy
+            </a>
+          </footer>
         </div>
       </div>
     </div>
