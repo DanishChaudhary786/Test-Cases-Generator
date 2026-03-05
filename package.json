@@ -1,0 +1,15 @@
+{
+  "name": "testcase-generator",
+  "version": "1.0.0",
+  "description": "Test Case Generator - Full Stack Application",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "preview": "npm run preview --prefix frontend",
+    "lint": "npm run lint --prefix frontend",
+    "install:frontend": "npm install --prefix frontend"
+  },
+  "keywords": ["test-case", "generator", "jira", "google-sheets"],
+  "license": "MIT"
+}
