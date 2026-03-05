@@ -1,0 +1,71 @@
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: '/api',
+  withCredentials: true,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Auth API
+export const authApi = {
+  getStatus: () => api.get('/auth/status').then(res => res.data),
+  logout: (provider?: string) => api.post('/auth/logout', null, { params: { provider } }),
+  getGoogleAuthUrl: () => '/api/auth/google',
+  getAtlassianAuthUrl: () => '/api/auth/atlassian',
+};
+
+// Jira API
+export const jiraApi = {
+  getBoards: () => api.get('/jira/boards').then(res => res.data),
+  getSprints: (boardId?: number) => 
+    api.get('/jira/sprints', { params: { board_id: boardId } }).then(res => res.data),
+  getLabels: () => api.get('/jira/labels').then(res => res.data),
+  getEpics: (sprintId?: string, labels?: string[]) => 
+    api.get('/jira/epics', { 
+      params: { sprint_id: sprintId, labels: labels?.join(',') } 
+    }).then(res => res.data),
+  getTasks: (epicKey?: string, tester?: string) => 
+    api.get('/jira/tasks', { params: { epic_key: epicKey, tester } }).then(res => res.data),
+  getTesters: () => api.get('/jira/testers').then(res => res.data),
+  getLinkTypes: () => api.get('/jira/link-types').then(res => res.data),
+  getUsers: (query?: string) => 
+    api.get('/jira/users', { params: { query } }).then(res => res.data),
+  getIssue: (issueKey: string) => api.get(`/jira/issue/${issueKey}`).then(res => res.data),
+  getEpicWithChildren: (epicKey: string) => 
+    api.get(`/jira/epic/${epicKey}/children`).then(res => res.data),
+};
+
+// Sheets API
+export const sheetsApi = {
+  listSheets: () => api.get('/sheets/list').then(res => res.data),
+  getSubsheets: (sheetId: string) => 
+    api.get(`/sheets/${sheetId}/subsheets`).then(res => res.data),
+  createSubsheet: (sheetId: string, name: string) => 
+    api.post(`/sheets/${sheetId}/subsheets`, { name }).then(res => res.data),
+};
+
+// Generate API
+export interface GenerateRequest {
+  epic_key: string;
+  task_keys: string[];
+  sheet_id: string;
+  subsheet_name: string;
+  columns: string[];
+  column_defaults?: Record<number, string>;
+  ai_provider: string;
+  ai_api_key?: string;
+}
+
+export const generateApi = {
+  start: (data: GenerateRequest) => 
+    api.post('/generate', data).then(res => res.data),
+  getStatus: (jobId: string) => 
+    api.get(`/generate/status/${jobId}`).then(res => res.data),
+  streamUrl: (jobId: string) => `/api/generate/stream/${jobId}`,
+  cancel: (jobId: string) => 
+    api.delete(`/generate/${jobId}`).then(res => res.data),
+};
+
+export default api;
