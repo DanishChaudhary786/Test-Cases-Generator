@@ -91,7 +91,7 @@ export interface WizardState {
   columnDefaults: Record<number, string>;
   
   // Step 4: Generate
-  aiProvider: 'anthropic' | 'openai' | 'gemini';
+  aiProvider: 'anthropic' | 'openai' | 'gemini' | 'deepseek';
   aiApiKey: string;
   generationJobId: string | null;
   generationMessages: string[];
@@ -113,7 +113,7 @@ export type WizardAction =
   | { type: 'SET_COLUMNS'; payload: string[] }
   | { type: 'SET_COLUMN_DEFAULT'; payload: { index: number; value: string } }
   | { type: 'REMOVE_COLUMN_DEFAULT'; payload: number }
-  | { type: 'SET_AI_PROVIDER'; payload: 'anthropic' | 'openai' | 'gemini' }
+  | { type: 'SET_AI_PROVIDER'; payload: 'anthropic' | 'openai' | 'gemini' | 'deepseek' }
   | { type: 'SET_AI_API_KEY'; payload: string }
   | { type: 'SET_GENERATION_JOB_ID'; payload: string | null }
   | { type: 'ADD_GENERATION_MESSAGE'; payload: string }

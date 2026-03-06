@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
     GOOGLE_AI_API_KEY: Optional[str] = None
+    DEEPSEEK_API_KEY: Optional[str] = None
     
     # Session settings
     SESSION_COOKIE_NAME: str = "testcase_session"

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { useWizard } from '../../contexts/WizardContext'
 import { generateApi } from '../../lib/api'
-import type { GenerateRequest } from '../../lib/api'
+import type { GenerateRequest, AIProvider } from '../../lib/api'
 import Select from '../ui/Select'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
@@ -19,7 +19,6 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import {
-  AI_PROVIDERS,
   STEP_CONTENT,
   LABELS,
   PLACEHOLDERS,
@@ -33,6 +32,29 @@ export default function GenerateStep() {
   const { state, dispatch, prevStep } = useWizard()
   const [isGenerating, setIsGenerating] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
+
+  // Fetch available AI providers from backend
+  const { data: providersData, isLoading: providersLoading } = useQuery({
+    queryKey: ['ai-providers'],
+    queryFn: () => generateApi.getProviders(),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const availableProviders = providersData?.providers || []
+  const hasOnlyOneProvider = availableProviders.length === 1
+  const hasNoProviders = availableProviders.length === 0
+
+  // Auto-select provider if only one is available or current selection is invalid
+  useEffect(() => {
+    if (availableProviders.length > 0) {
+      const currentProviderValid = availableProviders.some(
+        (p: AIProvider) => p.value === state.aiProvider
+      )
+      if (!currentProviderValid) {
+        dispatch({ type: 'SET_AI_PROVIDER', payload: availableProviders[0].value as 'anthropic' | 'openai' | 'gemini' | 'deepseek' })
+      }
+    }
+  }, [availableProviders, state.aiProvider, dispatch])
 
   const startMutation = useMutation({
     mutationFn: (data: GenerateRequest) => generateApi.start(data),
@@ -132,20 +154,36 @@ export default function GenerateStep() {
         {/* AI Configuration */}
         {!isGenerating && !isComplete && !hasError && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Select
-              label={LABELS.AI_PROVIDER}
-              options={[...AI_PROVIDERS]}
-              value={state.aiProvider}
-              onChange={(value) => dispatch({ type: 'SET_AI_PROVIDER', payload: value as 'anthropic' | 'openai' | 'gemini' })}
-            />
+            {hasNoProviders ? (
+              <div className="col-span-2 p-4 bg-failure-secondary rounded-xl border border-failure-primary">
+                <p className="text-sm text-failure-primary">
+                  No AI providers configured. Please add at least one API key (ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY) to your .env file.
+                </p>
+              </div>
+            ) : (
+              <>
+                <Select
+                  label={LABELS.AI_PROVIDER}
+                  options={availableProviders.map((p: AIProvider) => ({
+                    value: p.value,
+                    label: p.label,
+                    description: p.description,
+                  }))}
+                  value={state.aiProvider}
+                  onChange={(value) => dispatch({ type: 'SET_AI_PROVIDER', payload: value as 'anthropic' | 'openai' | 'gemini' | 'deepseek' })}
+                  disabled={hasOnlyOneProvider}
+                  loading={providersLoading}
+                />
 
-            <Input
-              label={LABELS.API_KEY}
-              type="password"
-              placeholder={PLACEHOLDERS.API_KEY_HINT}
-              value={state.aiApiKey}
-              onChange={(e) => dispatch({ type: 'SET_AI_API_KEY', payload: e.target.value })}
-            />
+                <Input
+                  label={LABELS.API_KEY}
+                  type="password"
+                  placeholder={PLACEHOLDERS.API_KEY_HINT}
+                  value={state.aiApiKey}
+                  onChange={(e) => dispatch({ type: 'SET_AI_API_KEY', payload: e.target.value })}
+                />
+              </>
+            )}
           </div>
         )}
 
@@ -285,7 +323,7 @@ export default function GenerateStep() {
           <Button
             onClick={handleStart}
             loading={isGenerating}
-            disabled={isGenerating}
+            disabled={isGenerating || hasNoProviders}
             icon={!isGenerating ? <Play className="w-4 h-4" /> : undefined}
           >
             {isGenerating ? BUTTONS.GENERATING : BUTTONS.START_GENERATION}

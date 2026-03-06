@@ -64,6 +64,42 @@ class GenerationProgress:
         generation_jobs[self.job_id]["error"] = error
 
 
+@router.get(GenerateRoutes.PROVIDERS)
+async def get_available_providers():
+    """
+    Returns the list of AI providers that have API keys configured.
+    Only providers with keys available in .env will be returned.
+    """
+    providers = []
+    
+    if settings.ANTHROPIC_API_KEY:
+        providers.append({
+            "value": "anthropic",
+            "label": "Anthropic (Claude)",
+            "description": "Recommended"
+        })
+    
+    if settings.OPENAI_API_KEY:
+        providers.append({
+            "value": "openai",
+            "label": "OpenAI (GPT-4)"
+        })
+    
+    if settings.GOOGLE_AI_API_KEY:
+        providers.append({
+            "value": "gemini",
+            "label": "Google (Gemini)"
+        })
+    
+    if settings.DEEPSEEK_API_KEY:
+        providers.append({
+            "value": "deepseek",
+            "label": "DeepSeek"
+        })
+    
+    return {"providers": providers}
+
+
 async def run_generation(
     job_id: str,
     request_data: GenerateRequest,

@@ -104,7 +104,15 @@ export interface GenerateRequest {
   ai_api_key?: string;
 }
 
+export interface AIProvider {
+  value: string;
+  label: string;
+  description?: string;
+}
+
 export const generateApi = {
+  getProviders: () => 
+    api.get('/generate/providers').then(res => res.data as { providers: AIProvider[] }),
   start: (data: GenerateRequest) => 
     api.post('/generate', data).then(res => res.data),
   getStatus: (jobId: string) => 

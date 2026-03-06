@@ -26,8 +26,8 @@ ATLASSIAN_SCOPES = [
     "offline_access",
 ]
 
-# Default sheet columns
-DEFAULT_SHEET_COLUMNS = ["Name", "Description", "Jira", "Labels"]
+# Default sheet columns (includes all special columns)
+DEFAULT_SHEET_COLUMNS = ["Name", "Description", "Jira", "Labels", "Sprint", "ExternalID", "Tester", "Link-type", "Assignee"]
 
 # Maximum custom columns allowed
 MAX_CUSTOM_COLUMNS = 10
@@ -84,6 +84,7 @@ AI_PROVIDERS = {
     "anthropic": "Anthropic (Claude)",
     "openai": "OpenAI (GPT-4)",
     "gemini": "Google (Gemini)",
+    "deepseek": "DeepSeek",
 }
 
 # Default AI models per provider
@@ -91,6 +92,7 @@ DEFAULT_AI_MODELS = {
     "anthropic": "claude-sonnet-4-20250514",
     "openai": "gpt-4o",
     "gemini": "gemini-1.5-pro",
+    "deepseek": "deepseek-chat",
 }
 
 # Jira custom field for Tester (commonly customfield_XXXXX)

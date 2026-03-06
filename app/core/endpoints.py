@@ -95,6 +95,7 @@ class SheetsRoutes:
 class GenerateRoutes:
     PREFIX = "/generate"
     ROOT = ""
+    PROVIDERS = "/providers"
     STATUS = "/status/{job_id}"
     STREAM = "/stream/{job_id}"
     CANCEL = "/{job_id}"

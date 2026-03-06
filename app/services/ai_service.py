@@ -18,7 +18,7 @@ from app.core.constants import (
     TOOL_NAME_FIELD_DESCRIPTION,
 )
 
-ProviderType = Literal["openai", "anthropic", "gemini"]
+ProviderType = Literal["openai", "anthropic", "gemini", "deepseek"]
 
 
 class AIProviderError(Exception):
@@ -295,6 +295,93 @@ class OpenAIProvider(BaseProvider):
         }
 
 
+class DeepSeekProvider(BaseProvider):
+    """DeepSeek provider using OpenAI-compatible API."""
+    
+    MAX_RETRIES = 3
+    RETRY_DELAY = 2
+    DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+    
+    def __init__(self, api_key: str, model: str = None):
+        from openai import OpenAI
+        self.client = OpenAI(api_key=api_key, base_url=self.DEEPSEEK_BASE_URL)
+        self.model = model or DEFAULT_AI_MODELS["deepseek"]
+    
+    def generate_test_cases(self, context: str) -> List[Dict]:
+        last_error = None
+        
+        for attempt in range(1, self.MAX_RETRIES + 1):
+            try:
+                test_cases = self._generate_with_tool(context)
+                validated = validate_test_cases(test_cases)
+                
+                if not validated:
+                    raise AIProviderError("DeepSeek returned test cases but none were valid")
+                
+                return validated
+                
+            except AIProviderError as e:
+                last_error = e
+                if attempt < self.MAX_RETRIES:
+                    time.sleep(self.RETRY_DELAY)
+            except Exception as e:
+                last_error = AIProviderError(f"Unexpected error: {type(e).__name__}: {str(e)}")
+                if attempt < self.MAX_RETRIES:
+                    time.sleep(self.RETRY_DELAY)
+        
+        raise AIProviderError(f"Failed after {self.MAX_RETRIES} attempts. Last error: {last_error}")
+    
+    def _generate_with_tool(self, context: str) -> List[Dict]:
+        tools = [self._get_tool_schema()]
+        
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": context}
+            ],
+            tools=tools,
+            tool_choice={"type": "function", "function": {"name": "generate_test_cases"}}
+        )
+        
+        if not response.choices[0].message.tool_calls:
+            content = response.choices[0].message.content or ""
+            raise AIProviderError(f"DeepSeek did not use the tool. Response: {content[:300]}...")
+        
+        tool_call = response.choices[0].message.tool_calls[0]
+        parsed = json.loads(tool_call.function.arguments)
+        return extract_test_cases_from_response(parsed, "DeepSeek tool response")
+    
+    def _get_tool_schema(self) -> Dict:
+        return {
+            "type": "function",
+            "function": {
+                "name": "generate_test_cases",
+                "description": TOOL_DESCRIPTION,
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "test_cases": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string", "description": TOOL_NAME_FIELD_DESCRIPTION},
+                                    "description": {"type": "array", "items": {"type": "string"}},
+                                    "jira": {"type": "string"},
+                                    "labels": {"type": "string"},
+                                },
+                                "required": ["name", "description", "jira", "labels"]
+                            }
+                        },
+                        "reasoning": {"type": "string"}
+                    },
+                    "required": ["test_cases", "reasoning"]
+                }
+            }
+        }
+
+
 class GeminiProvider(BaseProvider):
     """Google Gemini provider using function calling."""
     
@@ -375,6 +462,7 @@ class AIService:
         "openai": OpenAIProvider,
         "anthropic": AnthropicProvider,
         "gemini": GeminiProvider,
+        "deepseek": DeepSeekProvider,
     }
     
     def __init__(self, provider: ProviderType, api_key: str, model: str = None):

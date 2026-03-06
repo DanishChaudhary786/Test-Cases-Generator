@@ -14,8 +14,8 @@
 /** Maximum number of columns allowed in sheet configuration */
 export const MAX_COLUMNS = 10;
 
-/** Default column names for new sheet configurations */
-export const DEFAULT_COLUMNS = ['Name', 'Description', 'Jira', 'Labels'];
+/** Default column names for new sheet configurations (includes all special columns) */
+export const DEFAULT_COLUMNS = ['Name', 'Description', 'Jira', 'Labels', 'Sprint', 'ExternalID', 'Tester', 'Link-type', 'Assignee'];
 
 /** 
  * Columns that are auto-populated by AI from Jira data.
@@ -104,6 +104,7 @@ export const AI_PROVIDERS = [
   { value: 'anthropic', label: 'Anthropic (Claude)', description: 'Recommended' },
   { value: 'openai', label: 'OpenAI (GPT-4)' },
   { value: 'gemini', label: 'Google (Gemini)' },
+  { value: 'deepseek', label: 'DeepSeek' },
 ] as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
