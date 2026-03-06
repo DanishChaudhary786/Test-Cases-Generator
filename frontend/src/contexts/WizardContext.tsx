@@ -1,12 +1,9 @@
 import type { ReactNode } from 'react';
-import React, { createContext, useContext, useReducer, useEffect } from 'react';
+import React, { createContext, useContext, useReducer } from 'react';
 import type { WizardState, WizardAction } from '../types';
 import { DEFAULT_COLUMNS } from '../constants';
 
-/** LocalStorage key for persisting wizard state across page refreshes */
-const STORAGE_KEY = 'testCaseGenerator_wizardState';
-
-const defaultState: WizardState = {
+const initialState: WizardState = {
   currentStep: 0,
   authStatus: null,
   selectedSprint: null,
@@ -25,51 +22,6 @@ const defaultState: WizardState = {
   generationMessages: [],
   generationResult: null,
   generationError: null,
-};
-
-// Keys to persist in localStorage (excluding auth status and generation state)
-const PERSISTED_KEYS: (keyof WizardState)[] = [
-  'currentStep',
-  'selectedSprint',
-  'selectedLabels',
-  'selectedEpic',
-  'selectedTester',
-  'selectedTasks',
-  'selectedSheet',
-  'selectedSubsheet',
-  'newSubsheetName',
-  'columns',
-  'columnDefaults',
-  'aiProvider',
-];
-
-function loadPersistedState(): Partial<WizardState> {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch (e) {
-    console.warn('Failed to load persisted wizard state:', e);
-  }
-  return {};
-}
-
-function savePersistedState(state: WizardState) {
-  try {
-    const toPersist: Partial<WizardState> = {};
-    for (const key of PERSISTED_KEYS) {
-      (toPersist as Record<string, unknown>)[key] = state[key];
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(toPersist));
-  } catch (e) {
-    console.warn('Failed to save wizard state:', e);
-  }
-}
-
-const initialState: WizardState = {
-  ...defaultState,
-  ...loadPersistedState(),
 };
 
 function wizardReducer(state: WizardState, action: WizardAction): WizardState {
@@ -160,11 +112,6 @@ const WizardContext = createContext<WizardContextType | null>(null);
 
 export function WizardProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(wizardReducer, initialState);
-
-  // Persist state changes to localStorage
-  useEffect(() => {
-    savePersistedState(state);
-  }, [state]);
 
   const canProceedToStep = (step: number): boolean => {
     if (step === 0) return true;
