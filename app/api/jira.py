@@ -2,21 +2,30 @@
 Jira API endpoints for fetching sprints, labels, epics, and tasks.
 """
 
-from fastapi import APIRouter, Request, HTTPException, Query, Depends
+from fastapi import APIRouter, Request, HTTPException, Query, Depends, Header
 from typing import Optional, List
 
 from app.services.jira_service import JiraService
 from app.core.endpoints import JiraRoutes
 from app.core.token_store import get_tokens
+from app.core.config import settings
 
 router = APIRouter()
 
 SESSION_ID_KEY = "sid"
+SESSION_ID_HEADER = "X-Session-ID"
 
 
-def get_jira_service(request: Request) -> JiraService:
+def get_session_id(request: Request, x_session_id: Optional[str] = Header(None)) -> Optional[str]:
+    """Get session ID from header or session cookie."""
+    if x_session_id:
+        return x_session_id
+    return request.session.get(SESSION_ID_KEY)
+
+
+async def get_jira_service(request: Request, x_session_id: Optional[str] = Header(None)) -> JiraService:
     """Dependency to get authenticated JiraService."""
-    session_id = request.session.get(SESSION_ID_KEY)
+    session_id = get_session_id(request, x_session_id)
     atlassian_tokens = get_tokens(session_id, "atlassian") if session_id else None
     
     if not atlassian_tokens or not atlassian_tokens.get("access_token"):
@@ -222,12 +231,20 @@ async def add_comment(
     try:
         body = await request.json()
         comment_body = body.get("body", "")
-        mentions = body.get("mentions", [])
+        mentions = list(body.get("mentions", []))
+        
+        # Add Inspectors group (cc) from config
+        if settings.INSPECTORS_ACCOUNT_IDS:
+            for aid in settings.INSPECTORS_ACCOUNT_IDS.split(","):
+                aid = aid.strip()
+                if aid and aid not in mentions:
+                    mentions.append(aid)
         
         if not comment_body:
             raise HTTPException(status_code=400, detail="Comment body is required")
         
-        result = jira.add_comment(issue_key, comment_body, mentions)
+        inspectors_group_name = getattr(settings, "INSPECTORS_GROUP_NAME", None)
+        result = jira.add_comment(issue_key, comment_body, mentions, inspectors_group_name=inspectors_group_name)
         return {"success": True, "comment": result}
     except HTTPException:
         raise

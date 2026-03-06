@@ -6,7 +6,7 @@ import json
 import uuid
 import asyncio
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Request, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Request, HTTPException, BackgroundTasks, Header
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -20,6 +20,13 @@ from app.core.token_store import get_tokens
 router = APIRouter()
 
 SESSION_ID_KEY = "sid"
+
+
+def get_session_id(request: Request, x_session_id: Optional[str] = Header(None)) -> Optional[str]:
+    """Get session ID from header or session cookie."""
+    if x_session_id:
+        return x_session_id
+    return request.session.get(SESSION_ID_KEY)
 
 # In-memory storage for generation jobs (in production, use Redis or similar)
 generation_jobs: Dict[str, Dict[str, Any]] = {}
@@ -211,10 +218,11 @@ async def generate_test_cases(
     request: Request,
     body: GenerateRequest,
     background_tasks: BackgroundTasks,
+    x_session_id: Optional[str] = Header(None),
 ):
     """Start test case generation process."""
     # Verify authentication using token store
-    session_id = request.session.get(SESSION_ID_KEY)
+    session_id = get_session_id(request, x_session_id)
     
     atlassian_tokens = get_tokens(session_id, "atlassian") if session_id else None
     google_tokens = get_tokens(session_id, "google") if session_id else None

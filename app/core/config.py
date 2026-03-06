@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     SESSION_COOKIE_NAME: str = "testcase_session"
     SESSION_MAX_AGE: int = 86400  # 24 hours
     
+    # Inspectors group (cc on "add description" comments) - comma-separated Atlassian account IDs
+    INSPECTORS_ACCOUNT_IDS: Optional[str] = None
+    # Jira group name for cc (e.g. "Inspectors") - if set, adds @group mention in comment
+    INSPECTORS_GROUP_NAME: Optional[str] = None
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

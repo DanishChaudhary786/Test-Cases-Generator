@@ -18,6 +18,7 @@ GOOGLE_SCOPES = [
 # Atlassian OAuth Scopes
 ATLASSIAN_SCOPES = [
     "read:jira-work",
+    "write:jira-work",
     "read:jira-user",
     "read:sprint:jira-software",
     "read:board-scope:jira-software",

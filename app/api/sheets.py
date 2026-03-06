@@ -2,9 +2,9 @@
 Google Sheets API endpoints.
 """
 
-from fastapi import APIRouter, Request, HTTPException, Depends
+from fastapi import APIRouter, Request, HTTPException, Depends, Header
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 
 from app.services.sheets_service import SheetsService
 from app.core.endpoints import SheetsRoutes, get_sheet_url
@@ -20,9 +20,16 @@ class CreateSubsheetRequest(BaseModel):
     name: str
 
 
-def get_sheets_service(request: Request) -> SheetsService:
+def get_session_id(request: Request, x_session_id: Optional[str] = Header(None)) -> Optional[str]:
+    """Get session ID from header or session cookie."""
+    if x_session_id:
+        return x_session_id
+    return request.session.get(SESSION_ID_KEY)
+
+
+async def get_sheets_service(request: Request, x_session_id: Optional[str] = Header(None)) -> SheetsService:
     """Dependency to get authenticated SheetsService."""
-    session_id = request.session.get(SESSION_ID_KEY)
+    session_id = get_session_id(request, x_session_id)
     google_tokens = get_tokens(session_id, "google") if session_id else None
     
     if not google_tokens or not google_tokens.get("access_token"):

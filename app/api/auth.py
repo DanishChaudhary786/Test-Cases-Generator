@@ -42,13 +42,13 @@ def get_session_id(request: Request, x_session_id: Optional[str] = Header(None))
 # ─────────────────────────────────────────────────────────────────────
 
 @router.get(AuthRoutes.GOOGLE)
-async def google_auth(request: Request, x_session_id: Optional[str] = Header(None)):
+async def google_auth(request: Request, sid: Optional[str] = None, x_session_id: Optional[str] = Header(None)):
     """Initiate Google OAuth flow."""
     if not settings.GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Google OAuth not configured")
     
-    # Get or create session ID
-    session_id = get_session_id(request, x_session_id)
+    # Get or create session ID (prefer query param for browser redirects)
+    session_id = sid or get_session_id(request, x_session_id)
     if not session_id:
         session_id = create_session_id()
     
@@ -152,13 +152,13 @@ async def google_callback(request: Request, code: str = None, state: str = None,
 # ─────────────────────────────────────────────────────────────────────
 
 @router.get(AuthRoutes.ATLASSIAN)
-async def atlassian_auth(request: Request, x_session_id: Optional[str] = Header(None)):
+async def atlassian_auth(request: Request, sid: Optional[str] = None, x_session_id: Optional[str] = Header(None)):
     """Initiate Atlassian OAuth flow."""
     if not settings.ATLASSIAN_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Atlassian OAuth not configured")
     
-    # Get or create session ID
-    session_id = get_session_id(request, x_session_id)
+    # Get or create session ID (prefer query param for browser redirects)
+    session_id = sid or get_session_id(request, x_session_id)
     if not session_id:
         session_id = create_session_id()
     

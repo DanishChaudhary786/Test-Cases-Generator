@@ -58,8 +58,16 @@ export const authApi = {
     }
     return api.post('/auth/logout', null, { params: { provider } });
   },
-  getGoogleAuthUrl: () => `${API_BASE_URL}/auth/google`,
-  getAtlassianAuthUrl: () => `${API_BASE_URL}/auth/atlassian`,
+  getGoogleAuthUrl: () => {
+    const sid = getSessionId();
+    const url = `${API_BASE_URL}/auth/google`;
+    return sid ? `${url}?sid=${sid}` : url;
+  },
+  getAtlassianAuthUrl: () => {
+    const sid = getSessionId();
+    const url = `${API_BASE_URL}/auth/atlassian`;
+    return sid ? `${url}?sid=${sid}` : url;
+  },
 };
 
 // Jira API

@@ -64,7 +64,7 @@ class JiraService:
         logger.info(f"JQL Search: {jql}")
         return self._post(url, data)
     
-    def add_comment(self, issue_key: str, body: str, mentions: Optional[List[str]] = None) -> Dict:
+    def add_comment(self, issue_key: str, body: str, mentions: Optional[List[str]] = None, inspectors_group_name: Optional[str] = None) -> Dict:
         """
         Add a comment to a Jira issue.
         
@@ -72,16 +72,14 @@ class JiraService:
             issue_key: The issue key (e.g., "PROJ-123")
             body: The comment text
             mentions: Optional list of account IDs to mention in the comment
-        
-        Returns:
-            The created comment data
+            inspectors_group_name: Optional Jira group name for cc (e.g. "Inspectors") - adds @group mention
         """
         url = f"{self.base_url}/issue/{issue_key}/comment"
         
         # Build Atlassian Document Format (ADF) for the comment
         content = []
         
-        # Add mention for assignee if provided
+        # Add mention for assignee and inspectors (user mentions)
         if mentions:
             mention_content = []
             for account_id in mentions:
@@ -101,16 +99,32 @@ class JiraService:
                 "content": mention_content
             })
         
-        # Add the main comment text
-        content.append({
-            "type": "paragraph",
-            "content": [
-                {
-                    "type": "text",
-                    "text": body
-                }
-            ]
-        })
+        # Add the main comment text (one ADF paragraph per line so newlines render)
+        for line in body.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            # If this line is "cc: {group_name}", add a paragraph with group mention
+            if inspectors_group_name and line.lower() == f"cc: {inspectors_group_name.lower()}":
+                content.append({
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": "cc: "},
+                        {
+                            "type": "mention",
+                            "attrs": {
+                                "id": inspectors_group_name,
+                                "text": f"@{inspectors_group_name}",
+                                "accessLevel": ""
+                            }
+                        }
+                    ]
+                })
+            else:
+                content.append({
+                    "type": "paragraph",
+                    "content": [{"type": "text", "text": line}]
+                })
         
         data = {
             "body": {

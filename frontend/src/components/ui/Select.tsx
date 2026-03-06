@@ -74,6 +74,7 @@ export default function Select({
       } else {
         onChange([...current, optionValue])
       }
+      setIsOpen(false)
     } else {
       onChange(optionValue)
       setIsOpen(false)

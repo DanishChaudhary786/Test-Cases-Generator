@@ -148,7 +148,7 @@ export default function JiraSetupStep() {
           const mentions = task.assignee?.accountId ? [task.assignee.accountId] : []
           await jiraApi.addComment(
             task.key,
-            'Could you please add a description with proper testing criteria?\ncc: @qa-team',
+            'Could you please add a description with proper testing criteria?',
             mentions
           )
           successCount++
@@ -177,9 +177,8 @@ export default function JiraSetupStep() {
     )
     dispatch({ type: 'SET_TASKS', payload: tasksWithDescriptions })
     
-    // Close modal and proceed
+    // Close modal (stay on current step)
     setShowEmptyDescriptionModal(false)
-    nextStep()
   }
 
   const handleSkipAndContinue = () => {
@@ -487,7 +486,7 @@ export default function JiraSetupStep() {
               icon={<MessageSquare className="w-4 h-4" />}
               className="flex-1"
             >
-              {isAddingComments ? 'Adding...' : `Add Comment${tasksToComment.length > 1 ? 's' : ''} (${tasksToComment.length})`}
+              {isAddingComments ? 'Adding...' : `Add Comment${tasksToComment.length > 1 ? 's' : ''} & Deselect (${tasksToComment.length})`}
             </Button>
           </div>
         </div>
