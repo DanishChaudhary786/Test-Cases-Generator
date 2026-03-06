@@ -81,6 +81,8 @@ export const jiraApi = {
   getIssue: (issueKey: string) => api.get(`/jira/issue/${issueKey}`).then(res => res.data),
   getEpicWithChildren: (epicKey: string) => 
     api.get(`/jira/epic/${epicKey}/children`).then(res => res.data),
+  addComment: (issueKey: string, body: string, mentions?: string[]) =>
+    api.post(`/jira/issue/${issueKey}/comment`, { body, mentions }).then(res => res.data),
 };
 
 // Sheets API

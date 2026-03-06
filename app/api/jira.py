@@ -212,6 +212,31 @@ async def get_epic_with_children(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post(JiraRoutes.ISSUE_COMMENT)
+async def add_comment(
+    request: Request,
+    issue_key: str,
+    jira: JiraService = Depends(get_jira_service),
+):
+    """Add a comment to a Jira issue."""
+    try:
+        body = await request.json()
+        comment_body = body.get("body", "")
+        mentions = body.get("mentions", [])
+        
+        if not comment_body:
+            raise HTTPException(status_code=400, detail="Comment body is required")
+        
+        result = jira.add_comment(issue_key, comment_body, mentions)
+        return {"success": True, "comment": result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to add comment: {str(e)}")
+
+
 @router.get("/debug")
 async def debug_jira(
     request: Request,

@@ -32,6 +32,12 @@ export interface Epic {
   priority: string;
 }
 
+export interface Assignee {
+  accountId: string;
+  displayName: string;
+  emailAddress?: string;
+}
+
 export interface Task {
   key: string;
   summary: string;
@@ -40,6 +46,7 @@ export interface Task {
   type: string;
   status: string;
   priority: string;
+  assignee?: Assignee | null;
 }
 
 export interface Tester {

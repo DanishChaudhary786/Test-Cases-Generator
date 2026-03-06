@@ -6,12 +6,15 @@ import type { Sprint, Epic, Task, Tester } from '../../types'
 import Select from '../ui/Select'
 import Button from '../ui/Button'
 import Checkbox from '../ui/Checkbox'
-import { ArrowLeft, ArrowRight, AlertCircle } from 'lucide-react'
+import { ArrowLeft, ArrowRight, AlertCircle, MessageSquare } from 'lucide-react'
 import clsx from 'clsx'
 
 export default function JiraSetupStep() {
   const { state, dispatch, nextStep, prevStep, canProceedToStep } = useWizard()
   const [showEpicSection, setShowEpicSection] = useState(false)
+  const [isAddingComments, setIsAddingComments] = useState(false)
+  const [commentedTasks, setCommentedTasks] = useState<string[]>([])
+  const [commentError, setCommentError] = useState<string | null>(null)
 
   const { data: sprintsData, isLoading: sprintsLoading, error: sprintsError } = useQuery({
     queryKey: ['sprints'],
@@ -95,8 +98,54 @@ export default function JiraSetupStep() {
     }
   }
 
+  const handleContinue = async () => {
+    setCommentError(null)
+    
+    // Find tasks with empty descriptions
+    const tasksWithEmptyDescription = state.selectedTasks.filter(
+      task => !task.description || task.description.trim() === ''
+    )
+    
+    if (tasksWithEmptyDescription.length > 0) {
+      setIsAddingComments(true)
+      const newCommentedTasks: string[] = []
+      
+      try {
+        // Add comments to tasks with empty descriptions
+        for (const task of tasksWithEmptyDescription) {
+          try {
+            const mentions = task.assignee?.accountId ? [task.assignee.accountId] : []
+            await jiraApi.addComment(
+              task.key,
+              'Could you please add a description with proper testing criteria?\ncc: @qa-team',
+              mentions
+            )
+            newCommentedTasks.push(task.key)
+          } catch (err) {
+            console.error(`Failed to add comment to ${task.key}:`, err)
+          }
+        }
+        
+        setCommentedTasks(prev => [...prev, ...newCommentedTasks])
+      } catch (err) {
+        console.error('Error adding comments:', err)
+        setCommentError('Some comments could not be added, but you can still proceed.')
+      } finally {
+        setIsAddingComments(false)
+      }
+    }
+    
+    // Proceed to next step regardless of comment success
+    nextStep()
+  }
+
   const hasFilters = state.selectedSprint || state.selectedLabels.length > 0
   const canProceed = canProceedToStep(2)
+  
+  // Count tasks with empty descriptions in selected tasks
+  const emptyDescriptionCount = state.selectedTasks.filter(
+    task => !task.description || task.description.trim() === ''
+  ).length
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -225,22 +274,50 @@ export default function JiraSetupStep() {
                 </div>
               ) : (
                 <div className="divide-y divide-neutral-lightest-grey">
-                  {tasks.map((task: Task) => (
-                    <div
-                      key={task.key}
-                      className={clsx(
-                        'px-4 py-3 hover:bg-neutral-light-grey transition-colors',
-                        state.selectedTasks.some(t => t.key === task.key) && 'bg-success-secondary/20'
-                      )}
-                    >
-                      <Checkbox
-                        checked={state.selectedTasks.some(t => t.key === task.key)}
-                        onChange={(checked) => handleTaskToggle(task, checked)}
-                        label={`${task.key}: ${task.summary}`}
-                        description={`${task.type} • ${task.status}`}
-                      />
-                    </div>
-                  ))}
+                  {tasks.map((task: Task) => {
+                    const hasEmptyDescription = !task.description || task.description.trim() === ''
+                    const isSelected = state.selectedTasks.some(t => t.key === task.key)
+                    const wasCommented = commentedTasks.includes(task.key)
+                    
+                    return (
+                      <div
+                        key={task.key}
+                        className={clsx(
+                          'px-4 py-3 hover:bg-neutral-light-grey transition-colors',
+                          isSelected && 'bg-success-secondary/20'
+                        )}
+                      >
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={isSelected}
+                            onChange={(checked) => handleTaskToggle(task, checked)}
+                            label={`${task.key}: ${task.summary}`}
+                            description={`${task.type} • ${task.status}${task.assignee ? ` • ${task.assignee.displayName}` : ''}`}
+                          />
+                          {hasEmptyDescription && isSelected && (
+                            <span 
+                              className={clsx(
+                                "flex-shrink-0 text-xs px-2 py-0.5 rounded-full mt-1",
+                                wasCommented 
+                                  ? "bg-blue-100 text-blue-700" 
+                                  : "bg-warning-secondary text-warning-primary"
+                              )}
+                              title={wasCommented ? "Comment added requesting description" : "No description - comment will be added"}
+                            >
+                              {wasCommented ? (
+                                <span className="flex items-center gap-1">
+                                  <MessageSquare className="w-3 h-3" />
+                                  Notified
+                                </span>
+                              ) : (
+                                "No description"
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -266,6 +343,31 @@ export default function JiraSetupStep() {
             </p>
           </div>
         </div>
+
+        {/* Empty Description Warning */}
+        {emptyDescriptionCount > 0 && state.selectedTasks.length > 0 && (
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
+            <MessageSquare className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-text-secondary">
+              <p className="font-medium text-blue-700 mb-1">
+                {emptyDescriptionCount} task{emptyDescriptionCount > 1 ? 's' : ''} without description
+              </p>
+              <p>
+                When you continue, a comment will be added to each task asking the assignee to add a description with proper testing criteria.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Comment Error */}
+        {commentError && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-red-700">
+              {commentError}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Navigation */}
@@ -274,11 +376,12 @@ export default function JiraSetupStep() {
           Back
         </Button>
         <Button
-          onClick={nextStep}
-          disabled={!canProceed}
+          onClick={handleContinue}
+          disabled={!canProceed || isAddingComments}
+          loading={isAddingComments}
           icon={<ArrowRight className="w-4 h-4" />}
         >
-          Continue to Sheet Config
+          {isAddingComments ? 'Adding Comments...' : 'Continue to Sheet Config'}
         </Button>
       </div>
     </div>

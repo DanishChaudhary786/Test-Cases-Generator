@@ -79,6 +79,7 @@ class JiraRoutes:
     USERS = "/users"
     ISSUE = "/issue/{issue_key}"
     EPIC_CHILDREN = "/epic/{epic_key}/children"
+    ISSUE_COMMENT = "/issue/{issue_key}/comment"
 
 # ─────────────────────────────────────────────────────────────────────
 # Sheets Routes

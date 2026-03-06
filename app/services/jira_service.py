@@ -64,6 +64,67 @@ class JiraService:
         logger.info(f"JQL Search: {jql}")
         return self._post(url, data)
     
+    def add_comment(self, issue_key: str, body: str, mentions: Optional[List[str]] = None) -> Dict:
+        """
+        Add a comment to a Jira issue.
+        
+        Args:
+            issue_key: The issue key (e.g., "PROJ-123")
+            body: The comment text
+            mentions: Optional list of account IDs to mention in the comment
+        
+        Returns:
+            The created comment data
+        """
+        url = f"{self.base_url}/issue/{issue_key}/comment"
+        
+        # Build Atlassian Document Format (ADF) for the comment
+        content = []
+        
+        # Add mention for assignee if provided
+        if mentions:
+            mention_content = []
+            for account_id in mentions:
+                mention_content.append({
+                    "type": "mention",
+                    "attrs": {
+                        "id": account_id,
+                        "accessLevel": ""
+                    }
+                })
+                mention_content.append({
+                    "type": "text",
+                    "text": " "
+                })
+            content.append({
+                "type": "paragraph",
+                "content": mention_content
+            })
+        
+        # Add the main comment text
+        content.append({
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": body
+                }
+            ]
+        })
+        
+        data = {
+            "body": {
+                "type": "doc",
+                "version": 1,
+                "content": content
+            }
+        }
+        
+        logger.info(f"Adding comment to issue {issue_key}")
+        response = requests.post(url, headers=self.headers, json=data)
+        response.raise_for_status()
+        return response.json()
+    
     def get_accessible_resources(self) -> List[Dict]:
         """Get accessible Atlassian resources (cloud instances)."""
         response = requests.get(ATLASSIAN_RESOURCES_URL, headers=self.headers)
@@ -500,7 +561,7 @@ class JiraService:
         
         data = self._search_jql(
             jql=jql,
-            fields=["summary", "description", "labels", "issuetype", "status", "priority", "parent"],
+            fields=["summary", "description", "labels", "issuetype", "status", "priority", "parent", "assignee"],
             max_results=100
         )
         
@@ -509,7 +570,7 @@ class JiraService:
         excluded_statuses = ["done", "accepted", "closed", "resolved"]
         
         for issue in data.get("issues", []):
-            parsed = self._parse_issue(issue)
+            parsed = self._parse_issue_with_assignee(issue)
             summary_lower = parsed.get("summary", "").lower()
             status_lower = parsed.get("status", "").lower()
             key = parsed.get("key", "")
@@ -559,6 +620,30 @@ class JiraService:
             "type": fields.get("issuetype", {}).get("name", ""),
             "status": fields.get("status", {}).get("name", ""),
             "priority": fields.get("priority", {}).get("name", ""),
+        }
+    
+    def _parse_issue_with_assignee(self, data: Dict) -> Dict:
+        """Parse issue data with assignee information."""
+        fields = data.get("fields", {})
+        assignee = fields.get("assignee")
+        assignee_data = None
+        
+        if assignee:
+            assignee_data = {
+                "accountId": assignee.get("accountId"),
+                "displayName": assignee.get("displayName", "Unknown"),
+                "emailAddress": assignee.get("emailAddress"),
+            }
+        
+        return {
+            "key": data["key"],
+            "summary": fields.get("summary", ""),
+            "description": self._adf_to_text(fields.get("description")),
+            "labels": fields.get("labels", []),
+            "type": fields.get("issuetype", {}).get("name", ""),
+            "status": fields.get("status", {}).get("name", ""),
+            "priority": fields.get("priority", {}).get("name", ""),
+            "assignee": assignee_data,
         }
     
     def _adf_to_text(self, node: Any, depth: int = 0) -> str:
