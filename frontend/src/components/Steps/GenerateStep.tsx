@@ -15,13 +15,15 @@ import {
   XCircle, 
   Loader2,
   Terminal,
-  RefreshCw
+  RefreshCw,
+  Key,
+  X
 } from 'lucide-react'
 import clsx from 'clsx'
 import {
+  AI_PROVIDERS,
   STEP_CONTENT,
   LABELS,
-  PLACEHOLDERS,
   BUTTONS,
   SUMMARY_LABELS,
   SUCCESS,
@@ -31,9 +33,10 @@ import {
 export default function GenerateStep() {
   const { state, dispatch, prevStep } = useWizard()
   const [isGenerating, setIsGenerating] = useState(false)
+  const [useOwnApiKey, setUseOwnApiKey] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
-  // Fetch available AI providers from backend
+  // Fetch available AI providers from backend (server-configured)
   const { data: providersData, isLoading: providersLoading } = useQuery({
     queryKey: ['ai-providers'],
     queryFn: () => generateApi.getProviders(),
@@ -44,9 +47,16 @@ export default function GenerateStep() {
   const hasOnlyOneProvider = availableProviders.length === 1
   const hasNoProviders = availableProviders.length === 0
 
+  // All providers (for "use your own API key" mode)
+  const allProviders = AI_PROVIDERS.map(p => ({
+    value: p.value,
+    label: p.label,
+    description: 'description' in p ? p.description : undefined,
+  }))
+
   // Auto-select provider if only one is available or current selection is invalid
   useEffect(() => {
-    if (availableProviders.length > 0) {
+    if (!useOwnApiKey && availableProviders.length > 0) {
       const currentProviderValid = availableProviders.some(
         (p: AIProvider) => p.value === state.aiProvider
       )
@@ -54,7 +64,19 @@ export default function GenerateStep() {
         dispatch({ type: 'SET_AI_PROVIDER', payload: availableProviders[0].value as 'anthropic' | 'openai' | 'gemini' | 'deepseek' })
       }
     }
-  }, [availableProviders, state.aiProvider, dispatch])
+  }, [availableProviders, state.aiProvider, dispatch, useOwnApiKey])
+
+  // Clear API key when switching back to server mode
+  const handleToggleOwnApiKey = () => {
+    if (useOwnApiKey) {
+      dispatch({ type: 'SET_AI_API_KEY', payload: '' })
+      // Reset to first available server provider
+      if (availableProviders.length > 0) {
+        dispatch({ type: 'SET_AI_PROVIDER', payload: availableProviders[0].value as 'anthropic' | 'openai' | 'gemini' | 'deepseek' })
+      }
+    }
+    setUseOwnApiKey(!useOwnApiKey)
+  }
 
   const startMutation = useMutation({
     mutationFn: (data: GenerateRequest) => generateApi.start(data),
@@ -153,36 +175,75 @@ export default function GenerateStep() {
       <div className="space-y-6">
         {/* AI Configuration */}
         {!isGenerating && !isComplete && !hasError && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {hasNoProviders ? (
-              <div className="col-span-2 p-4 bg-failure-secondary rounded-xl border border-failure-primary">
-                <p className="text-sm text-failure-primary">
-                  No AI providers configured. Please add at least one API key (ANTHROPIC_API_KEY, OPENAI_API_KEY, or GOOGLE_AI_API_KEY) to your .env file.
-                </p>
+          <div className="space-y-4">
+            {useOwnApiKey ? (
+              // User's own API key mode - show all providers
+              <div className="p-4 border border-neutral-grey rounded-xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Key className="w-4 h-4 text-success-primary" />
+                    <span className="font-medium text-text-primary">Using Your API Key</span>
+                  </div>
+                  <button
+                    onClick={handleToggleOwnApiKey}
+                    className="p-1.5 rounded-lg hover:bg-neutral-light-grey transition-colors"
+                  >
+                    <X className="w-4 h-4 text-text-tertiary" />
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Select
+                    label={LABELS.AI_PROVIDER}
+                    options={allProviders}
+                    value={state.aiProvider}
+                    onChange={(value) => dispatch({ type: 'SET_AI_PROVIDER', payload: value as 'anthropic' | 'openai' | 'gemini' | 'deepseek' })}
+                  />
+
+                  <Input
+                    label="API Key"
+                    type="password"
+                    placeholder="Enter your API key..."
+                    value={state.aiApiKey}
+                    onChange={(e) => dispatch({ type: 'SET_AI_API_KEY', payload: e.target.value })}
+                  />
+                </div>
               </div>
             ) : (
-              <>
-                <Select
-                  label={LABELS.AI_PROVIDER}
-                  options={availableProviders.map((p: AIProvider) => ({
-                    value: p.value,
-                    label: p.label,
-                    description: p.description,
-                  }))}
-                  value={state.aiProvider}
-                  onChange={(value) => dispatch({ type: 'SET_AI_PROVIDER', payload: value as 'anthropic' | 'openai' | 'gemini' | 'deepseek' })}
-                  disabled={hasOnlyOneProvider}
-                  loading={providersLoading}
-                />
-
-                <Input
-                  label={LABELS.API_KEY}
-                  type="password"
-                  placeholder={PLACEHOLDERS.API_KEY_HINT}
-                  value={state.aiApiKey}
-                  onChange={(e) => dispatch({ type: 'SET_AI_API_KEY', payload: e.target.value })}
-                />
-              </>
+              // Server-configured providers mode
+              <div className="flex items-end gap-4">
+                {hasNoProviders ? (
+                  <div className="flex-1 p-4 bg-failure-secondary rounded-xl border border-failure-primary">
+                    <p className="text-sm text-failure-primary">
+                      No AI providers configured on server. Use your own API key to continue.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex-1">
+                    <Select
+                      label={LABELS.AI_PROVIDER}
+                      options={availableProviders.map((p: AIProvider) => ({
+                        value: p.value,
+                        label: p.label,
+                        description: p.description,
+                      }))}
+                      value={state.aiProvider}
+                      onChange={(value) => dispatch({ type: 'SET_AI_PROVIDER', payload: value as 'anthropic' | 'openai' | 'gemini' | 'deepseek' })}
+                      disabled={hasOnlyOneProvider}
+                      loading={providersLoading}
+                    />
+                  </div>
+                )}
+                
+                <Button
+                  variant="outline"
+                  onClick={handleToggleOwnApiKey}
+                  icon={<Key className="w-4 h-4" />}
+                  className="whitespace-nowrap"
+                >
+                  Use Your API Key
+                </Button>
+              </div>
             )}
           </div>
         )}
@@ -323,7 +384,7 @@ export default function GenerateStep() {
           <Button
             onClick={handleStart}
             loading={isGenerating}
-            disabled={isGenerating || hasNoProviders}
+            disabled={isGenerating || (hasNoProviders && !useOwnApiKey) || (useOwnApiKey && !state.aiApiKey)}
             icon={!isGenerating ? <Play className="w-4 h-4" /> : undefined}
           >
             {isGenerating ? BUTTONS.GENERATING : BUTTONS.START_GENERATION}
