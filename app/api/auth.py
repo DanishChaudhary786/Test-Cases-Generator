@@ -44,11 +44,12 @@ def get_session_id(request: Request, x_session_id: Optional[str] = Header(None))
 @router.get(AuthRoutes.GOOGLE)
 async def google_auth(request: Request, sid: Optional[str] = None, x_session_id: Optional[str] = Header(None)):
     """Initiate Google OAuth flow."""
-    if not settings.GOOGLE_CLIENT_ID:
+    client_id = (settings.GOOGLE_CLIENT_ID or "").strip()
+    if not client_id:
         raise HTTPException(status_code=500, detail="Google OAuth not configured")
     
-    # Normalize redirect URI (no trailing slash) - Google is strict
-    redirect_uri = (settings.GOOGLE_REDIRECT_URI or "").rstrip("/")
+    # Normalize redirect URI (no trailing slash) - Google is strict; must match Cloud Console exactly
+    redirect_uri = (settings.GOOGLE_REDIRECT_URI or "").strip().rstrip("/")
     if not redirect_uri:
         raise HTTPException(status_code=500, detail="GOOGLE_REDIRECT_URI not set")
     
@@ -61,15 +62,19 @@ async def google_auth(request: Request, sid: Optional[str] = None, x_session_id:
     state = secrets.token_urlsafe(32)
     store_oauth_state(state, session_id)
     
+    # Scope order: openid first when using OIDC; then profile/email, then API scopes (avoids consent 500)
+    scopes = " ".join(GOOGLE_SCOPES)
+    
     params = {
-        "client_id": settings.GOOGLE_CLIENT_ID,
+        "client_id": client_id,
         "redirect_uri": redirect_uri,
         "response_type": "code",
-        "scope": " ".join(GOOGLE_SCOPES),
+        "scope": scopes,
         "access_type": "offline",
-        "prompt": "consent",
         "state": state,
     }
+    # Default "select_account" avoids consent screen 500; set GOOGLE_OAUTH_PROMPT=consent to force consent
+    params["prompt"] = settings.GOOGLE_OAUTH_PROMPT or "select_account"
     
     auth_url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
     return RedirectResponse(url=auth_url)
@@ -102,13 +107,13 @@ async def google_callback(request: Request, code: str = None, state: str = None,
     
     async with httpx.AsyncClient() as client:
         # Must match redirect_uri used in auth step (no trailing slash)
-        redirect_uri = (settings.GOOGLE_REDIRECT_URI or "").rstrip("/")
+        redirect_uri = (settings.GOOGLE_REDIRECT_URI or "").strip().rstrip("/")
         # Exchange code for tokens
         token_response = await client.post(
             GOOGLE_TOKEN_URL,
             data={
-                "client_id": settings.GOOGLE_CLIENT_ID,
-                "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                "client_id": (settings.GOOGLE_CLIENT_ID or "").strip(),
+                "client_secret": (settings.GOOGLE_CLIENT_SECRET or "").strip(),
                 "code": code,
                 "grant_type": "authorization_code",
                 "redirect_uri": redirect_uri,

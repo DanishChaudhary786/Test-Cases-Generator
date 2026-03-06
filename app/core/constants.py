@@ -6,13 +6,13 @@ Constants used throughout the application.
 # OAUTH CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Google OAuth Scopes
+# Google OAuth Scopes (openid first for OIDC; order can affect consent screen behavior)
 GOOGLE_SCOPES = [
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/userinfo.profile",
-    "openid",
 ]
 
 # Atlassian OAuth Scopes

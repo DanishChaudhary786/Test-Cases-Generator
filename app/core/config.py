@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/auth/google/callback"
+    # Optional: "select_account" (default, avoids consent 500) or "consent" (force consent every time)
+    GOOGLE_OAUTH_PROMPT: str = "select_account"
     
     # Atlassian OAuth settings
     ATLASSIAN_CLIENT_ID: str = ""
