@@ -17,6 +17,7 @@ export default function JiraSetupStep() {
   const [isAddingComments, setIsAddingComments] = useState(false)
   const [showEmptyDescriptionModal, setShowEmptyDescriptionModal] = useState(false)
   const [tasksWithEmptyDesc, setTasksWithEmptyDesc] = useState<Task[]>([])
+  const [tasksToComment, setTasksToComment] = useState<string[]>([])
 
   const { data: sprintsData, isLoading: sprintsLoading, error: sprintsError } = useQuery({
     queryKey: ['sprints'],
@@ -107,8 +108,9 @@ export default function JiraSetupStep() {
     )
     
     if (emptyDescTasks.length > 0) {
-      // Show confirmation modal
+      // Show confirmation modal with all tasks selected by default
       setTasksWithEmptyDesc(emptyDescTasks)
+      setTasksToComment(emptyDescTasks.map(t => t.key))
       setShowEmptyDescriptionModal(true)
     } else {
       // No empty descriptions, proceed directly
@@ -116,13 +118,32 @@ export default function JiraSetupStep() {
     }
   }
 
+  const handleTaskCommentToggle = (taskKey: string, checked: boolean) => {
+    if (checked) {
+      setTasksToComment(prev => [...prev, taskKey])
+    } else {
+      setTasksToComment(prev => prev.filter(key => key !== taskKey))
+    }
+  }
+
+  const handleSelectAllForComment = () => {
+    if (tasksToComment.length === tasksWithEmptyDesc.length) {
+      setTasksToComment([])
+    } else {
+      setTasksToComment(tasksWithEmptyDesc.map(t => t.key))
+    }
+  }
+
   const handleAddCommentsAndContinue = async () => {
     setIsAddingComments(true)
     let successCount = 0
     
+    // Get tasks that are selected for commenting
+    const tasksToAddComment = tasksWithEmptyDesc.filter(task => tasksToComment.includes(task.key))
+    
     try {
-      // Add comments to tasks with empty descriptions
-      for (const task of tasksWithEmptyDesc) {
+      // Add comments only to selected tasks
+      for (const task of tasksToAddComment) {
         try {
           const mentions = task.assignee?.accountId ? [task.assignee.accountId] : []
           await jiraApi.addComment(
@@ -406,22 +427,47 @@ export default function JiraSetupStep() {
                 {tasksWithEmptyDesc.length} task{tasksWithEmptyDesc.length > 1 ? 's' : ''} without description
               </p>
               <p className="text-amber-700 mt-1">
-                The following tasks don't have descriptions and will be deselected:
+                The following tasks don't have descriptions and will be deselected.
+                Select which tasks should receive a comment:
               </p>
             </div>
           </div>
 
-          <div className="max-h-40 overflow-y-auto border border-neutral-lightest-grey rounded-lg">
-            {tasksWithEmptyDesc.map(task => (
-              <div key={task.key} className="px-3 py-2 border-b border-neutral-lightest-grey last:border-b-0">
-                <p className="text-sm font-medium text-text-primary">{task.key}</p>
-                <p className="text-xs text-text-tertiary truncate">{task.summary}</p>
-              </div>
-            ))}
+          <div className="border border-neutral-lightest-grey rounded-lg overflow-hidden">
+            <div className="px-3 py-2 bg-neutral-light-grey border-b border-neutral-lightest-grey flex items-center justify-between">
+              <span className="text-xs font-medium text-text-secondary">
+                {tasksToComment.length} of {tasksWithEmptyDesc.length} selected for comment
+              </span>
+              <button
+                type="button"
+                onClick={handleSelectAllForComment}
+                className="text-xs text-success-primary hover:underline"
+              >
+                {tasksToComment.length === tasksWithEmptyDesc.length ? 'Deselect All' : 'Select All'}
+              </button>
+            </div>
+            <div className="max-h-40 overflow-y-auto">
+              {tasksWithEmptyDesc.map(task => (
+                <div 
+                  key={task.key} 
+                  className={clsx(
+                    "px-3 py-2 border-b border-neutral-lightest-grey last:border-b-0 transition-colors",
+                    tasksToComment.includes(task.key) && "bg-success-secondary/10"
+                  )}
+                >
+                  <Checkbox
+                    checked={tasksToComment.includes(task.key)}
+                    onChange={(checked) => handleTaskCommentToggle(task.key, checked)}
+                    label={task.key}
+                    description={task.summary}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
 
           <p className="text-sm text-text-secondary">
-            Would you like to add a comment to these tasks asking the assignee to add a description?
+            Comment will be added to selected tasks asking the assignee to add a description.
           </p>
 
           <div className="flex gap-3 pt-2">
@@ -431,17 +477,17 @@ export default function JiraSetupStep() {
               disabled={isAddingComments}
               className="flex-1"
             >
-              No, Just Continue
+              Skip & Continue
             </Button>
             <Button
               variant="primary"
               onClick={handleAddCommentsAndContinue}
               loading={isAddingComments}
-              disabled={isAddingComments}
+              disabled={isAddingComments || tasksToComment.length === 0}
               icon={<MessageSquare className="w-4 h-4" />}
               className="flex-1"
             >
-              {isAddingComments ? 'Adding...' : 'Add Comments'}
+              {isAddingComments ? 'Adding...' : `Add Comment${tasksToComment.length > 1 ? 's' : ''} (${tasksToComment.length})`}
             </Button>
           </div>
         </div>
