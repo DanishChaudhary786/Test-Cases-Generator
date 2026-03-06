@@ -47,6 +47,11 @@ async def google_auth(request: Request, sid: Optional[str] = None, x_session_id:
     if not settings.GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Google OAuth not configured")
     
+    # Normalize redirect URI (no trailing slash) - Google is strict
+    redirect_uri = (settings.GOOGLE_REDIRECT_URI or "").rstrip("/")
+    if not redirect_uri:
+        raise HTTPException(status_code=500, detail="GOOGLE_REDIRECT_URI not set")
+    
     # Get or create session ID (prefer query param for browser redirects)
     session_id = sid or get_session_id(request, x_session_id)
     if not session_id:
@@ -58,7 +63,7 @@ async def google_auth(request: Request, sid: Optional[str] = None, x_session_id:
     
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
-        "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+        "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": " ".join(GOOGLE_SCOPES),
         "access_type": "offline",
@@ -96,6 +101,8 @@ async def google_callback(request: Request, code: str = None, state: str = None,
         )
     
     async with httpx.AsyncClient() as client:
+        # Must match redirect_uri used in auth step (no trailing slash)
+        redirect_uri = (settings.GOOGLE_REDIRECT_URI or "").rstrip("/")
         # Exchange code for tokens
         token_response = await client.post(
             GOOGLE_TOKEN_URL,
@@ -104,7 +111,7 @@ async def google_callback(request: Request, code: str = None, state: str = None,
                 "client_secret": settings.GOOGLE_CLIENT_SECRET,
                 "code": code,
                 "grant_type": "authorization_code",
-                "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+                "redirect_uri": redirect_uri,
             },
         )
         
