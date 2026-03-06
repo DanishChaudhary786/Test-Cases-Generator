@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 import { useWizard } from '../../contexts/WizardContext'
 import { jiraApi } from '../../lib/api'
 import type { Sprint, Epic, Task, Tester } from '../../types'
 import Select from '../ui/Select'
 import Button from '../ui/Button'
 import Checkbox from '../ui/Checkbox'
+import Modal from '../ui/Modal'
 import { ArrowLeft, ArrowRight, AlertCircle, MessageSquare } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -13,8 +15,8 @@ export default function JiraSetupStep() {
   const { state, dispatch, nextStep, prevStep, canProceedToStep } = useWizard()
   const [showEpicSection, setShowEpicSection] = useState(false)
   const [isAddingComments, setIsAddingComments] = useState(false)
-  const [commentedTasks, setCommentedTasks] = useState<string[]>([])
-  const [commentError, setCommentError] = useState<string | null>(null)
+  const [showEmptyDescriptionModal, setShowEmptyDescriptionModal] = useState(false)
+  const [tasksWithEmptyDesc, setTasksWithEmptyDesc] = useState<Task[]>([])
 
   const { data: sprintsData, isLoading: sprintsLoading, error: sprintsError } = useQuery({
     queryKey: ['sprints'],
@@ -98,44 +100,76 @@ export default function JiraSetupStep() {
     }
   }
 
-  const handleContinue = async () => {
-    setCommentError(null)
-    
+  const handleContinue = () => {
     // Find tasks with empty descriptions
-    const tasksWithEmptyDescription = state.selectedTasks.filter(
+    const emptyDescTasks = state.selectedTasks.filter(
       task => !task.description || task.description.trim() === ''
     )
     
-    if (tasksWithEmptyDescription.length > 0) {
-      setIsAddingComments(true)
-      const newCommentedTasks: string[] = []
-      
-      try {
-        // Add comments to tasks with empty descriptions
-        for (const task of tasksWithEmptyDescription) {
-          try {
-            const mentions = task.assignee?.accountId ? [task.assignee.accountId] : []
-            await jiraApi.addComment(
-              task.key,
-              'Could you please add a description with proper testing criteria?\ncc: @qa-team',
-              mentions
-            )
-            newCommentedTasks.push(task.key)
-          } catch (err) {
-            console.error(`Failed to add comment to ${task.key}:`, err)
-          }
+    if (emptyDescTasks.length > 0) {
+      // Show confirmation modal
+      setTasksWithEmptyDesc(emptyDescTasks)
+      setShowEmptyDescriptionModal(true)
+    } else {
+      // No empty descriptions, proceed directly
+      nextStep()
+    }
+  }
+
+  const handleAddCommentsAndContinue = async () => {
+    setIsAddingComments(true)
+    let successCount = 0
+    
+    try {
+      // Add comments to tasks with empty descriptions
+      for (const task of tasksWithEmptyDesc) {
+        try {
+          const mentions = task.assignee?.accountId ? [task.assignee.accountId] : []
+          await jiraApi.addComment(
+            task.key,
+            'Could you please add a description with proper testing criteria?\ncc: @qa-team',
+            mentions
+          )
+          successCount++
+        } catch (err) {
+          console.error(`Failed to add comment to ${task.key}:`, err)
         }
-        
-        setCommentedTasks(prev => [...prev, ...newCommentedTasks])
-      } catch (err) {
-        console.error('Error adding comments:', err)
-        setCommentError('Some comments could not be added, but you can still proceed.')
-      } finally {
-        setIsAddingComments(false)
       }
+      
+      // Show success toast
+      if (successCount > 0) {
+        toast.success(
+          `Comment added to ${successCount} task${successCount > 1 ? 's' : ''} requesting description`,
+          { duration: 4000 }
+        )
+      }
+    } catch (err) {
+      console.error('Error adding comments:', err)
+      toast.error('Some comments could not be added')
+    } finally {
+      setIsAddingComments(false)
     }
     
-    // Proceed to next step regardless of comment success
+    // Deselect tasks without descriptions
+    const tasksWithDescriptions = state.selectedTasks.filter(
+      task => task.description && task.description.trim() !== ''
+    )
+    dispatch({ type: 'SET_TASKS', payload: tasksWithDescriptions })
+    
+    // Close modal and proceed
+    setShowEmptyDescriptionModal(false)
+    nextStep()
+  }
+
+  const handleSkipAndContinue = () => {
+    // Deselect tasks without descriptions (don't add comments)
+    const tasksWithDescriptions = state.selectedTasks.filter(
+      task => task.description && task.description.trim() !== ''
+    )
+    dispatch({ type: 'SET_TASKS', payload: tasksWithDescriptions })
+    
+    // Close modal and proceed
+    setShowEmptyDescriptionModal(false)
     nextStep()
   }
 
@@ -277,7 +311,6 @@ export default function JiraSetupStep() {
                   {tasks.map((task: Task) => {
                     const hasEmptyDescription = !task.description || task.description.trim() === ''
                     const isSelected = state.selectedTasks.some(t => t.key === task.key)
-                    const wasCommented = commentedTasks.includes(task.key)
                     
                     return (
                       <div
@@ -296,22 +329,10 @@ export default function JiraSetupStep() {
                           />
                           {hasEmptyDescription && isSelected && (
                             <span 
-                              className={clsx(
-                                "flex-shrink-0 text-xs px-2 py-0.5 rounded-full mt-1",
-                                wasCommented 
-                                  ? "bg-blue-100 text-blue-700" 
-                                  : "bg-warning-secondary text-warning-primary"
-                              )}
-                              title={wasCommented ? "Comment added requesting description" : "No description - comment will be added"}
+                              className="shrink-0 text-xs px-2 py-0.5 rounded-full mt-1 bg-warning-secondary text-warning-primary"
+                              title="No description available"
                             >
-                              {wasCommented ? (
-                                <span className="flex items-center gap-1">
-                                  <MessageSquare className="w-3 h-3" />
-                                  Notified
-                                </span>
-                              ) : (
-                                "No description"
-                              )}
+                              No description
                             </span>
                           )}
                         </div>
@@ -334,7 +355,7 @@ export default function JiraSetupStep() {
 
         {/* Info Box */}
         <div className="p-4 bg-warning-secondary rounded-lg flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-warning-primary flex-shrink-0 mt-0.5" />
+          <AlertCircle className="w-5 h-5 text-warning-primary shrink-0 mt-0.5" />
           <div className="text-sm text-text-secondary">
             <p className="font-medium text-warning-primary mb-1">Important Note</p>
             <p>
@@ -344,27 +365,14 @@ export default function JiraSetupStep() {
           </div>
         </div>
 
-        {/* Empty Description Warning */}
+        {/* Empty Description Info */}
         {emptyDescriptionCount > 0 && state.selectedTasks.length > 0 && (
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
-            <MessageSquare className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div className="text-sm text-text-secondary">
-              <p className="font-medium text-blue-700 mb-1">
-                {emptyDescriptionCount} task{emptyDescriptionCount > 1 ? 's' : ''} without description
+              <p className="font-medium text-amber-700">
+                {emptyDescriptionCount} of {state.selectedTasks.length} selected task{emptyDescriptionCount > 1 ? 's have' : ' has'} no description
               </p>
-              <p>
-                When you continue, a comment will be added to each task asking the assignee to add a description with proper testing criteria.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Comment Error */}
-        {commentError && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-red-700">
-              {commentError}
             </div>
           </div>
         )}
@@ -377,13 +385,67 @@ export default function JiraSetupStep() {
         </Button>
         <Button
           onClick={handleContinue}
-          disabled={!canProceed || isAddingComments}
-          loading={isAddingComments}
+          disabled={!canProceed}
           icon={<ArrowRight className="w-4 h-4" />}
         >
-          {isAddingComments ? 'Adding Comments...' : 'Continue to Sheet Config'}
+          Continue to Sheet Config
         </Button>
       </div>
+
+      {/* Empty Description Confirmation Modal */}
+      <Modal
+        isOpen={showEmptyDescriptionModal}
+        onClose={() => setShowEmptyDescriptionModal(false)}
+        title="Tasks Without Description"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium text-amber-800">
+                {tasksWithEmptyDesc.length} task{tasksWithEmptyDesc.length > 1 ? 's' : ''} without description
+              </p>
+              <p className="text-amber-700 mt-1">
+                The following tasks don't have descriptions and will be deselected:
+              </p>
+            </div>
+          </div>
+
+          <div className="max-h-40 overflow-y-auto border border-neutral-lightest-grey rounded-lg">
+            {tasksWithEmptyDesc.map(task => (
+              <div key={task.key} className="px-3 py-2 border-b border-neutral-lightest-grey last:border-b-0">
+                <p className="text-sm font-medium text-text-primary">{task.key}</p>
+                <p className="text-xs text-text-tertiary truncate">{task.summary}</p>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-sm text-text-secondary">
+            Would you like to add a comment to these tasks asking the assignee to add a description?
+          </p>
+
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={handleSkipAndContinue}
+              disabled={isAddingComments}
+              className="flex-1"
+            >
+              No, Just Continue
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleAddCommentsAndContinue}
+              loading={isAddingComments}
+              disabled={isAddingComments}
+              icon={<MessageSquare className="w-4 h-4" />}
+              className="flex-1"
+            >
+              {isAddingComments ? 'Adding...' : 'Add Comments'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
