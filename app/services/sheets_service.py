@@ -264,17 +264,24 @@ class SheetsService:
         # Header styling
         requests.append({
             "repeatCell": {
-                "range": {"sheetId": tab_id, "startRowIndex": 0, "endRowIndex": 1},
+                "range": {
+                    "sheetId": tab_id,
+                    "startRowIndex": 0,
+                    "endRowIndex": 1,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": total_cols,
+                },
                 "cell": {
                     "userEnteredFormat": {
                         "backgroundColor": HEADER_BG_COLOR,
                         "textFormat": {
                             "foregroundColor": HEADER_FONT_COLOR,
                             "bold": True,
-                            "fontSize": 11,
+                            "fontFamily": "Poppins",
+                            "fontSize": 12,
                         },
                         "horizontalAlignment": "CENTER",
-                        "verticalAlignment": "MIDDLE",
+                        # "verticalAlignment": "MIDDLE",
                         "wrapStrategy": "WRAP",
                     }
                 },
@@ -305,7 +312,7 @@ class SheetsService:
                     "userEnteredFormat": {
                         "wrapStrategy": "WRAP",
                         "verticalAlignment": "TOP",
-                        "textFormat": {"fontSize": 10},
+                        "textFormat": {"fontFamily": "Poppins", "fontSize": 11},
                     }
                 },
                 "fields": "userEnteredFormat(wrapStrategy,verticalAlignment,textFormat)",
@@ -340,24 +347,10 @@ class SheetsService:
                 },
                 "cell": {
                     "userEnteredFormat": {
-                        "textFormat": {"bold": True, "fontSize": 10}
+                        "textFormat": {"bold": False, "fontFamily": "Poppins", "fontSize": 11}
                     }
                 },
                 "fields": "userEnteredFormat.textFormat",
-            }
-        })
-        
-        # Header row height
-        requests.append({
-            "updateDimensionProperties": {
-                "range": {
-                    "sheetId": tab_id,
-                    "dimension": "ROWS",
-                    "startIndex": 0,
-                    "endIndex": 1,
-                },
-                "properties": {"pixelSize": 40},
-                "fields": "pixelSize",
             }
         })
         

@@ -71,6 +71,127 @@ def extract_test_cases_from_response(data: Any, source: str = "response") -> Lis
     raise AIProviderError(f"Unexpected data type from {source}: {type(data).__name__}")
 
 
+def _split_jira_keys(jira_field: str) -> List[str]:
+    """Split a jira field into stripped issue keys (comma-separated)."""
+    if not jira_field:
+        return []
+    return [p.strip() for p in str(jira_field).split(",") if p.strip()]
+
+
+def expand_test_cases_for_children(
+    test_cases: List[Dict],
+    epic_key: str,
+    child_keys: List[str],
+    fe_key: Optional[str] = None,
+) -> List[Dict]:
+    """
+    Ensure each child task receives its own rows in the sheet.
+
+    - Replaces the Epic key in ``jira`` with every selected child key.
+    - Splits any test case tagged with multiple child keys into one row per key
+      (so epic-level / shared tests are appended under each child for grouping).
+    - If ``jira`` is missing or does not match any selected child, assigns the
+      test case to every selected child so it is not dropped.
+    """
+    if not child_keys:
+        return list(test_cases)
+
+    child_set = set(child_keys)
+    epic = (epic_key or "").strip()
+    expanded: List[Dict] = []
+
+    for tc in test_cases:
+        if not isinstance(tc, dict):
+            continue
+
+        # Special handling: cross-browser/OS compatibility should only be attached
+        # to the FE (frontend) task, not duplicated across every child.
+        name = str(tc.get("name") or "")
+        if "cross-browser and os compatibility" in name.lower():
+            target = (fe_key or (child_keys[0] if child_keys else None))
+            if target:
+                expanded.append({**tc, "jira": target})
+            continue
+
+        raw_keys = _split_jira_keys(tc.get("jira") or tc.get("jira_id") or tc.get("ticket") or "")
+
+        normalized: List[str] = []
+        for k in raw_keys:
+            if epic and k == epic:
+                normalized.extend(child_keys)
+            else:
+                normalized.append(k)
+
+        seen_norm = set()
+        ordered_full: List[str] = []
+        for k in normalized:
+            if k not in seen_norm:
+                seen_norm.add(k)
+                ordered_full.append(k)
+
+        ordered = [k for k in ordered_full if k in child_set]
+
+        if not ordered:
+            targets = list(child_keys)
+        elif len(ordered) == 1:
+            targets = ordered
+        else:
+            targets = ordered
+
+        for kid in targets:
+            expanded.append({**tc, "jira": kid})
+
+    return expanded
+
+
+def select_fe_child_key(issues: List[Dict], child_keys: List[str]) -> Optional[str]:
+    """
+    Heuristic to find the "FE task" among the selected child tasks.
+
+    We look for FE/frontend indicators in labels and summary. If nothing matches,
+    we fall back to the first provided child key.
+    """
+    if not child_keys:
+        return None
+
+    def score_issue(issue: Dict) -> int:
+        summary = (issue.get("summary") or "").lower()
+        labels = [str(l).lower() for l in (issue.get("labels") or [])]
+
+        score = 0
+        # Strong signals
+        if any(l == "fe" for l in labels):
+            score += 50
+        if any("frontend" in l for l in labels):
+            score += 40
+        if any(l.startswith("fe") for l in labels):
+            score += 25
+
+        # Summary signals (common patterns)
+        if "frontend" in summary:
+            score += 20
+        if "front end" in summary:
+            score += 20
+        if re.search(r"\bfe\b", summary):
+            score += 15
+        if "ui" in summary or "web ui" in summary:
+            score += 8
+        return score
+
+    best = None
+    best_score = -1
+    for issue in issues:
+        key = issue.get("key")
+        if not key or key not in child_keys:
+            continue
+        s = score_issue(issue)
+        if s > best_score:
+            best_score = s
+            best = key
+
+    return best or (child_keys[0] if child_keys else None)
+
+
 def validate_test_cases(test_cases: List[Dict]) -> List[Dict]:
     """Validate and clean test cases, ensuring required fields exist."""
     validated = []
@@ -149,17 +270,45 @@ class AnthropicProvider(BaseProvider):
         
         raise AIProviderError(f"Failed after {self.MAX_RETRIES} attempts. Last error: {last_error}")
     
-    def _generate_with_tool(self, context: str) -> List[Dict]:
-        tool = self._get_tool_schema()
-        
+    def _generate_via_plain_json(self, context: str) -> List[Dict]:
+        """
+        Fallback when the installed anthropic SDK is too old for tool_use (no ``tools`` kwarg).
+        Asks for the same structured payload as plain JSON in the assistant text.
+        """
+        footer = (
+            "Respond with ONLY a single JSON object (no markdown code fences). "
+            'Keys: "test_cases" (array of { "name", "description", "jira", "labels" } '
+            'where description is an array of strings) and "reasoning" (string).'
+        )
         response = self.client.messages.create(
             model=self.model,
             max_tokens=self.max_tokens,
             system=SYSTEM_PROMPT,
-            tools=[tool],
-            tool_choice={"type": "any"},
-            messages=[{"role": "user", "content": context}],
+            messages=[{"role": "user", "content": f"{context}\n\n{footer}"}],
         )
+        text_response = ""
+        for block in response.content:
+            if hasattr(block, "type") and block.type == "text":
+                text_response += getattr(block, "text", "") or ""
+        return extract_test_cases_from_response(text_response, "Claude JSON response")
+    
+    def _generate_with_tool(self, context: str) -> List[Dict]:
+        tool = self._get_tool_schema()
+        
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                system=SYSTEM_PROMPT,
+                tools=[tool],
+                tool_choice={"type": "any"},
+                messages=[{"role": "user", "content": context}],
+            )
+        except TypeError as e:
+            err = str(e).lower()
+            if "tools" in err or "tool_choice" in err or "unexpected keyword" in err:
+                return self._generate_via_plain_json(context)
+            raise
         
         tool_use_block = None
         text_response = ""
@@ -490,17 +639,33 @@ class AIService:
         
         test_cases = self.provider.generate_test_cases(context)
         
+        child_keys = [i["key"] for i in issues if i.get("key")]
+        fe_key = select_fe_child_key(issues, child_keys)
+        test_cases = expand_test_cases_for_children(
+            test_cases,
+            epic_key=epic.get("key", ""),
+            child_keys=child_keys,
+            fe_key=fe_key,
+        )
+        
         if progress_callback:
-            progress_callback(f"Generated {len(test_cases)} test cases")
+            progress_callback(f"Generated {len(test_cases)} test cases (expanded per child task)")
         
         return test_cases
     
     def _build_context(self, epic: Dict, issues: List[Dict]) -> str:
+        child_key_list = [i["key"] for i in issues if i.get("key")]
+        valid_jira_hint = (
+            ", ".join(child_key_list) if child_key_list else "(none)"
+        )
         lines = [
             f"EPIC: {epic['key']} — {epic['summary']}",
             f"Status: {epic.get('status', 'N/A')}",
             f"Labels: {', '.join(epic.get('labels', [])) or 'none'}",
             f"Description:\n{epic.get('description', 'No description provided.')}",
+            "",
+            "ALLOWED \"jira\" KEYS (child tasks only — never use the Epic key in \"jira\"):",
+            valid_jira_hint,
             "",
             f"LINKED ISSUES ({len(issues)} total):",
             "─" * 50,

@@ -271,10 +271,12 @@ async def atlassian_callback(request: Request, code: str = None, state: str = No
         
         email = None
         display_name = None
+        account_id = None
         if me_response.status_code == 200:
             me_data = me_response.json()
             email = me_data.get("emailAddress")
             display_name = me_data.get("displayName")
+            account_id = me_data.get("accountId")
     
     # Store tokens in server-side token store
     store_tokens(session_id, "atlassian", {
@@ -285,6 +287,7 @@ async def atlassian_callback(request: Request, code: str = None, state: str = No
         "site_url": site_url,
         "email": email,
         "name": display_name,
+        "account_id": account_id,
     })
     
     print(f"[DEBUG] Atlassian callback - stored in token store:")
@@ -328,6 +331,7 @@ async def auth_status(request: Request, x_session_id: Optional[str] = Header(Non
             "authenticated": atlassian_tokens is not None,
             "email": atlassian_tokens.get("email") if atlassian_tokens else None,
             "name": atlassian_tokens.get("name") if atlassian_tokens else None,
+            "accountId": atlassian_tokens.get("account_id") if atlassian_tokens else None,
             "siteName": atlassian_tokens.get("site_name") if atlassian_tokens else None,
             "siteUrl": atlassian_tokens.get("site_url") if atlassian_tokens else None,
         },

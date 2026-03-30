@@ -120,90 +120,88 @@ async def run_generation(
     
     try:
         progress.set_status(GenerationStatus.IN_PROGRESS)
-        
-        # Step 1: Fetch Jira data
-        progress.update("Initializing Jira connection...")
-        jira = JiraService(access_token=jira_token, cloud_id=jira_cloud_id)
-        
-        progress.update(f"Fetching Epic: {request_data.epic_key}...")
-        epic = jira.get_issue(request_data.epic_key)
-        progress.update(f"Found Epic: {epic['summary']}")
-        
-        # Fetch child tasks
-        progress.update(f"Fetching {len(request_data.task_keys)} tasks...")
-        issues = []
-        for task_key in request_data.task_keys:
-            try:
-                issue = jira.get_issue(task_key)
-                issues.append(issue)
-                progress.update(f"  - {task_key}: {issue['summary'][:50]}...")
-            except Exception as e:
-                progress.update(f"  - {task_key}: Error fetching ({str(e)[:30]})")
-        
-        progress.update(f"Total issues to analyze: {len(issues)}")
-        
-        # Step 2: Generate test cases with AI
-        api_key = request_data.ai_api_key or getattr(settings, f"{request_data.ai_provider.upper()}_API_KEY", None)
-        
-        if not api_key:
-            raise ValueError(f"No API key provided for {request_data.ai_provider}")
-        
-        progress.update(f"Generating test cases with {request_data.ai_provider.upper()}...")
-        
-        ai_service = AIService(
-            provider=request_data.ai_provider,
-            api_key=api_key,
-        )
-        
-        test_cases = ai_service.generate_test_cases(
-            epic=epic,
-            issues=issues,
-            progress_callback=lambda msg: progress.update(msg),
-        )
-        
-        progress.update(f"Generated {len(test_cases)} test cases")
-        
-        # Log grouping by Jira ID
-        jira_groups = {}
-        for tc in test_cases:
-            jira_id = tc.get("jira", "Unknown")
-            jira_groups[jira_id] = jira_groups.get(jira_id, 0) + 1
-        
-        progress.update("Test cases grouped by Jira ID:")
-        for jira_id in sorted(jira_groups.keys()):
-            progress.update(f"  - {jira_id}: {jira_groups[jira_id]} test cases")
-        
-        # Step 3: Write to Google Sheets
-        progress.update("Connecting to Google Sheets...")
-        sheets = SheetsService(
-            access_token=google_token,
-            refresh_token=google_refresh_token,
-        )
-        
-        progress.update(f"Writing to sheet: {request_data.subsheet_name}...")
-        result = sheets.write_test_cases(
-            spreadsheet_id=request_data.sheet_id,
-            subsheet_name=request_data.subsheet_name,
-            test_cases=test_cases,
-            columns=request_data.columns,
-            column_defaults=request_data.column_defaults,
-        )
-        
-        progress.update(f"Written {result['rows_written']} rows to '{result['tab_name']}'")
-        
-        # Complete - include tab_id in URL to open specific subsheet
-        sheet_url = get_sheet_url(request_data.sheet_id, result.get("tab_id"))
-        progress.set_result({
-            "success": True,
-            "test_cases_count": len(test_cases),
-            "rows_written": result["rows_written"],
-            "tab_name": result["tab_name"],
-            "tab_id": result.get("tab_id"),
-            "sheet_id": request_data.sheet_id,
-            "sheet_url": sheet_url,
-        })
+
+        def generation_pipeline() -> Dict:
+            # Step 1: Fetch Jira data
+            progress.update("Initializing Jira connection...")
+            jira = JiraService(access_token=jira_token, cloud_id=jira_cloud_id)
+
+            progress.update(f"Fetching Epic: {request_data.epic_key}...")
+            epic = jira.get_issue(request_data.epic_key)
+            progress.update(f"Found Epic: {epic['summary']}")
+
+            # Fetch child tasks
+            progress.update(f"Fetching {len(request_data.task_keys)} tasks...")
+            issues = []
+            for task_key in request_data.task_keys:
+                try:
+                    issue = jira.get_issue(task_key)
+                    issues.append(issue)
+                    progress.update(f"  - {task_key}: {issue['summary'][:50]}...")
+                except Exception as e:
+                    progress.update(f"  - {task_key}: Error fetching ({str(e)[:30]})")
+
+            progress.update(f"Total issues to analyze: {len(issues)}")
+
+            # Step 2: Generate test cases with AI
+            api_key = request_data.ai_api_key or getattr(settings, f"{request_data.ai_provider.upper()}_API_KEY", None)
+            if not api_key:
+                raise ValueError(f"No API key provided for {request_data.ai_provider}")
+
+            progress.update(f"Generating test cases with {request_data.ai_provider.upper()}...")
+            ai_service = AIService(provider=request_data.ai_provider, api_key=api_key)
+
+            test_cases = ai_service.generate_test_cases(
+                epic=epic,
+                issues=issues,
+                progress_callback=lambda msg: progress.update(msg),
+            )
+
+            progress.update(f"Generated {len(test_cases)} test cases")
+
+            # Log grouping by Jira ID
+            jira_groups: Dict[str, int] = {}
+            for tc in test_cases:
+                jira_id = tc.get("jira", "Unknown")
+                jira_groups[jira_id] = jira_groups.get(jira_id, 0) + 1
+
+            progress.update("Test cases grouped by Jira ID:")
+            for jira_id in sorted(jira_groups.keys()):
+                progress.update(f"  - {jira_id}: {jira_groups[jira_id]} test cases")
+
+            # Step 3: Write to Google Sheets
+            progress.update("Connecting to Google Sheets...")
+            sheets = SheetsService(access_token=google_token, refresh_token=google_refresh_token)
+
+            progress.update(f"Writing to sheet: {request_data.subsheet_name}...")
+            result = sheets.write_test_cases(
+                spreadsheet_id=request_data.sheet_id,
+                subsheet_name=request_data.subsheet_name,
+                test_cases=test_cases,
+                columns=request_data.columns,
+                column_defaults=request_data.column_defaults,
+            )
+
+            progress.update(f"Written {result['rows_written']} rows to '{result['tab_name']}'")
+
+            # Complete - include tab_id in URL to open specific subsheet
+            sheet_url = get_sheet_url(request_data.sheet_id, result.get("tab_id"))
+            return {
+                "success": True,
+                "test_cases_count": len(test_cases),
+                "rows_written": result["rows_written"],
+                "tab_name": result["tab_name"],
+                "tab_id": result.get("tab_id"),
+                "sheet_id": request_data.sheet_id,
+                "sheet_url": sheet_url,
+            }
+
+        # Offload blocking Jira/AI/Sheets work so SSE can stream logs in real-time.
+        result = await asyncio.to_thread(generation_pipeline)
+
+        progress.set_result(result)
         progress.set_status(GenerationStatus.COMPLETED)
-        progress.update(f"Completed! View sheet: {sheet_url}")
+        progress.update(f"Completed! View sheet: {result.get('sheet_url')}")
         
     except Exception as e:
         import traceback

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { useWizard } from '../../contexts/WizardContext'
@@ -65,6 +65,35 @@ export default function JiraSetupStep() {
   const testers = testersData?.testers || []
   const epics = epicsData?.epics || []
   const tasks = tasksData?.tasks || []
+
+  // Auto-select tester based on signed-in Atlassian user.
+  // Priority: accountId (exact) -> email (case-insensitive) -> display name.
+  // Only runs when no tester is currently selected (manual choice wins).
+  useEffect(() => {
+    if (state.selectedTester || testers.length === 0 || !state.authStatus?.atlassian?.authenticated) {
+      return
+    }
+
+    const authAtlassian = state.authStatus.atlassian
+    let matched: Tester | undefined
+
+    if (authAtlassian.accountId) {
+      matched = testers.find((t: Tester) => t.accountId === authAtlassian.accountId)
+    }
+
+    if (!matched && authAtlassian.email) {
+      const authEmail = authAtlassian.email.toLowerCase()
+      matched = testers.find((t: Tester) => (t.emailAddress || "").toLowerCase() === authEmail)
+    }
+
+    if (!matched && authAtlassian.name) {
+      matched = testers.find((t: Tester) => t.displayName === authAtlassian.name)
+    }
+
+    if (matched) {
+      dispatch({ type: 'SET_TESTER', payload: matched })
+    }
+  }, [dispatch, state.authStatus, state.selectedTester, testers])
 
   const handleSprintChange = (value: string | string[] | null) => {
     const sprint = sprints.find((s: Sprint) => s.id.toString() === value) || null

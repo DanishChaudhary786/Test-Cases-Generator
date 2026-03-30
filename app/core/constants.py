@@ -101,7 +101,8 @@ DEFAULT_AI_MODELS = {
 JIRA_TESTER_FIELD_NAMES = ["Tester", "QA", "QA Engineer", "Test Engineer"]
 
 # Sheet formatting colors (RGB 0-1 scale)
-HEADER_BG_COLOR = {"red": 0.85, "green": 0.92, "blue": 1.0}
+# LightCornflowerBlue3 (HEX #93CCEA => RGB 147, 204, 234)
+HEADER_BG_COLOR = {"red": 147 / 255, "green": 190 / 255, "blue": 234 / 255}
 HEADER_FONT_COLOR = {"red": 0.0, "green": 0.0, "blue": 0.0}
 
 # API rate limiting
@@ -134,9 +135,10 @@ class GenerationStatus:
 #   3. Description Format: Use "should" - "Verify that X should Y"
 #   4. Multiple Scenarios: Group related verifications in one test case
 #   5. Detailed Coverage: Happy path, edge cases, error states, permissions, etc.
-#   6. No Duplicates: Merge duplicate test cases with multiple Jira IDs
-#   7. Common Test Case: Include one test case for cross-browser/OS compatibility
-#   8. Child Tasks Only: Generate test cases for child tasks, NOT the Epic itself
+#   6. Per-Child Detail: At least three single-key detailed cases per child issue
+#   7. Shared Tests: Comma-separated child keys; expanded per child in the pipeline
+#   8. Common Test Case: Cross-browser/OS attached only to FE child
+#   9. Child Tasks Only: Epic never appears in "jira" fields
 #
 # This prompt has been refined through multiple iterations to produce
 # well-structured, actionable test cases that follow QA best practices.
@@ -153,11 +155,20 @@ CRITICAL RULES (MUST FOLLOW)
 1. TEST CASES ARE FOR CHILD TASKS ONLY — NOT FOR THE EPIC
    - The Epic is provided for CONTEXT only
    - Generate test cases ONLY for the child tasks/issues listed
-   - Each test case's "jira" field must reference a CHILD TASK key (not the Epic key)
+   - Each test case's "jira" field must reference CHILD TASK keys only (never the Epic key)
+   - The context lists ALLOWED "jira" KEYS — use only those keys
 
-2. NO DUPLICATE TEST CASES
-   - If the same test scenario applies to multiple tasks, create ONE test case
-   - Add ALL relevant Jira IDs in the "jira" field, comma-separated
+2. PER-CHILD DEDICATED (DETAILED) TEST CASES — MANDATORY
+   - For EVERY child issue under LINKED ISSUES, produce at least THREE detailed test cases whose "jira" field is a SINGLE key — that issue's key only (no commas)
+   - These must reflect that issue's summary and description (specific behavior, UI, data, errors, edge cases)
+   - Do not rely only on broad or shared tests; each child must have substantive, issue-specific coverage
+
+3. SHARED / EPIC-SCOPE TEST CASES (cross-cutting)
+   - For scenarios that apply to multiple or all child tasks (e.g. integration across stories, the mandatory cross-browser case), create ONE test case and list every applicable CHILD key in "jira", comma-separated
+   - These will be copied under each listed child in the sheet; include every child the scenario truly covers
+
+4. NO DUPLICATE TEST CASES (for the same scenario)
+   - If the same test scenario applies to multiple tasks, use ONE test case with comma-separated child keys in "jira"
    - Example: "jira": "WOT-123, WOT-321, WOT-456"
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -208,19 +219,20 @@ TEST CASE DESCRIPTION RULES (VERY IMPORTANT)
    - Reference actual behavior described in the Jira ticket
 
 ═══════════════════════════════════════════════════════════════════════════════
-MANDATORY COMMON TEST CASE
-═══════════════════════════════════════════════════════════════════════════════
+MANDATORY COMMON TEST CASE (FE ONLY)
+═══════════════════════════════════════════════════════════════════════════════════════
 
 ALWAYS include ONE test case named "Verify cross-browser and OS compatibility" containing:
-- "- Verify that the feature should work correctly on Chrome browser"
-- "- Verify that the feature should work correctly on Firefox browser"
-- "- Verify that the feature should work correctly on Safari browser"
-- "- Verify that the feature should work correctly on Edge browser"
+- "- Verify the feature should be displayed properly on different browsers
+        \t1. Chrome/Microsoft edge
+        \t2. Safari
+        \t3. Firefox"
 - "- Verify that the feature should work correctly on Windows OS"
 - "- Verify that the feature should work correctly on macOS"
-- "- Verify that the feature should work correctly on mobile responsive view"
+- "- Verify the feature with supported languages"
 
-This test case should reference ALL child task Jira IDs in the "jira" field.
+Attach this test case ONLY to the FE (frontend) child task.
+In the "jira" field, use the FE child's SINGLE Jira key only (no commas).
 
 ═══════════════════════════════════════════════════════════════════════════════
 SCENARIO COVERAGE (Include all relevant types)
@@ -313,4 +325,4 @@ Use the generate_test_cases tool to return structured output."""
 TOOL_DESCRIPTION = "Generate structured QA test cases with specific, actionable names"
 
 # Field description for the test case name (used in tool schema)
-TOOL_NAME_FIELD_DESCRIPTION = "MUST start with 'Verify'. Short, specific test name."
+TOOL_NAME_FIELD_DESCRIPTION = "MUST start with 'Verify'. detailed, specific test name."

@@ -6,6 +6,7 @@ export interface AuthStatus {
   };
   atlassian: {
     authenticated: boolean;
+    accountId?: string;
     email?: string;
     name?: string;
     siteName?: string;

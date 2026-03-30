@@ -12,10 +12,49 @@ An AI-powered tool that automates test case creation by converting Jira stories 
 
 ## Workflow
 
-1. **Sign In** - Authenticate with Google and Atlassian accounts
-2. **Jira Setup** - Select your Jira project and configure issue filters
-3. **Sheet Config** - Choose or create a Google Sheet for output
-4. **Generate** - Select AI provider and generate test cases
+The app uses a **4-step wizard**. Below is the end-to-end flow and what happens at each stage.
+
+### User journey (wizard)
+
+| Step | Name | What you do |
+|------|------|-------------|
+| 1 | **Sign In** | Connect **Google** (Sheets access) and **Atlassian** (Jira access). Both are required before later steps. |
+| 2 | **Jira Setup** | Pick a Jira site, project, and filters so the app knows which stories/issues to turn into test cases. |
+| 3 | **Sheet Config** | Select an existing Google Sheet or create a new one—this is where generated test cases are written. |
+| 4 | **Generate** | Choose an AI provider (OpenAI, Anthropic, or Gemini), optional model, then run generation. Results are appended to your sheet. |
+
+### Flow diagram
+
+```mermaid
+flowchart LR
+    A[1. Sign In] --> B[2. Jira Setup]
+    B --> C[3. Sheet Config]
+    C --> D[4. Generate]
+    D --> E[Google Sheet]
+
+    subgraph auth [Authentication]
+        A
+    end
+
+    subgraph sources [Data]
+        J[Jira stories]
+    end
+
+    subgraph out [Output]
+        E
+    end
+
+    B --> J
+    J --> D
+    D -->|AI generates cases| E
+```
+
+### Behind the scenes
+
+1. **OAuth** – Sessions store Google and Atlassian tokens so the backend can call Jira and Google Sheets on your behalf.
+2. **Fetch** – Selected Jira issues are retrieved via the Jira REST API.
+3. **Generate** – Issue content is sent to the chosen AI; structured test cases are produced from prompts in the backend.
+4. **Export** – The backend writes rows to your configured Google Sheet via the Sheets API.
 
 ## Tech Stack
 

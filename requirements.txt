@@ -20,8 +20,9 @@ google-auth>=2.25.0
 google-auth-oauthlib>=1.2.0
 google-auth-httplib2>=0.2.0
 
-# AI Providers
-anthropic>=0.18.0
+# AI Providers (0.18+ messages API; tool_use needs a recent SDK — upgrade if you see
+# "Messages.create() got an unexpected keyword argument 'tools'")
+anthropic>=0.34.0
 openai>=1.10.0
 google-generativeai>=0.8.0
 

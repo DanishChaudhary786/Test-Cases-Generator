@@ -297,7 +297,7 @@ export default function GenerateStep() {
                       ? 'text-failure-primary'
                       : message.includes('✓') || message.includes('✅') || message.includes('Completed')
                       ? 'text-success-primary'
-                      : 'text-neutral-grey'
+                      : 'text-gray-200'
                   )}
                 >
                   {message}
@@ -314,7 +314,7 @@ export default function GenerateStep() {
         {isComplete && state.generationResult && (
           <div className="p-6 bg-success-secondary/30 rounded-xl border border-success-primary">
             <div className="flex items-start gap-4">
-              <CheckCircle2 className="w-8 h-8 text-success-primary flex-shrink-0" />
+              <CheckCircle2 className="w-8 h-8 text-success-primary shrink-0" />
               <div className="flex-1">
                 <h3 className="font-semibold text-text-primary text-lg mb-2">
                   {SUCCESS.GENERATION_COMPLETE_TITLE}
@@ -351,7 +351,7 @@ export default function GenerateStep() {
         {hasError && (
           <div className="p-6 bg-failure-secondary rounded-xl border border-failure-primary">
             <div className="flex items-start gap-4">
-              <XCircle className="w-8 h-8 text-failure-primary flex-shrink-0" />
+              <XCircle className="w-8 h-8 text-failure-primary shrink-0" />
               <div className="flex-1">
                 <h3 className="font-semibold text-text-primary text-lg mb-2">
                   {ERRORS.GENERATION_FAILED_TITLE}
